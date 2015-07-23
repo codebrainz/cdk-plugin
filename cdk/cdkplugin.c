@@ -420,6 +420,8 @@ cdk_plugin_update_document (CdkPlugin *self, struct GeanyDocument *doc)
 
   if (status == CXError_Success)
     {
+      cdk_document_helper_updated (CDK_DOCUMENT_HELPER (data->completer));
+      cdk_document_helper_updated (CDK_DOCUMENT_HELPER (data->highlighter));
       g_signal_emit_by_name (self, "document-updated", doc);
       return TRUE;
     }
