@@ -1,0 +1,13 @@
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+includedir=@includedir@
+libdir=@libdir@
+plugindir=@libdir@/geany
+vapidir=@datadir@/vala/vapi
+
+Name: @PACKAGE@
+Description: Support library for the C/C++ Development Kit
+Version: @PACKAGE_VERSION@
+Requires: geany gtk+-3.0 glib-2.0 gio-2.0 gmodule-2.0
+Cflags: -I${includedir}
+Libs: -L${libdir} -lcdk
