@@ -10,6 +10,7 @@
 #include <cdk/cdkplugin.h>
 #include <cdk/cdkhighlighter.h>
 #include <cdk/cdkcompleter.h>
+#include <cdk/cdkdiagnostics.h>
 #include <cdk/cdkutils.h>
 #include <geanyplugin.h>
 #include <clang-c/Index.h>
@@ -19,6 +20,7 @@ typedef struct
   CdkPlugin        *plugin;       // the CdkPlugin that owns this
   CdkCompleter     *completer;    // auto-completion helper
   CdkHighlighter   *highlighter;  // syntax highlighting helper
+  CdkDiagnostics   *diagnostics;  // diagnostic highlighter/message helper
   CXTranslationUnit tu;           // libclang translation unit
   GeanyDocument    *doc;          // the associated GeanyDocument
 }
@@ -89,6 +91,9 @@ cdk_document_data_free (CdkDocumentData *data)
 
   if (CDK_IS_HIGHLIGHTER (data->highlighter))
     g_object_unref (data->highlighter);
+
+  if (CDK_IS_DIAGNOSTICS (data->diagnostics))
+    g_object_unref (data->diagnostics);
 
   if (data->tu != NULL)
     clang_disposeTranslationUnit (data->tu);
@@ -374,6 +379,7 @@ cdk_plugin_add_document (CdkPlugin *self, struct GeanyDocument *doc)
   data->tu = tu;
   data->highlighter = cdk_highlighter_new (self, doc);
   data->completer = cdk_completer_new (self, doc);
+  data->diagnostics = cdk_diagnostics_new (self, doc);
   data->doc = doc;
 
   cdk_highlighter_set_style_scheme (data->highlighter, self->priv->scheme);
@@ -422,6 +428,7 @@ cdk_plugin_update_document (CdkPlugin *self, struct GeanyDocument *doc)
     {
       cdk_document_helper_updated (CDK_DOCUMENT_HELPER (data->completer));
       cdk_document_helper_updated (CDK_DOCUMENT_HELPER (data->highlighter));
+      cdk_document_helper_updated (CDK_DOCUMENT_HELPER (data->diagnostics));
       g_signal_emit_by_name (self, "document-updated", doc);
       return TRUE;
     }

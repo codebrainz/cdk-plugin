@@ -396,6 +396,9 @@ cdk_highlighter_set_style_scheme (CdkHighlighter *self, CdkStyleScheme *scheme)
           // set the styles used by the highlighter
           for (gint i = 0; i < CDK_NUM_STYLES; i++)
             {
+              if (! cdk_style_id_is_for_syntax (i))
+                continue;
+
               CdkStyle *style = cdk_style_scheme_get_style (self->priv->scheme, i);
 
               if (style == NULL)

@@ -1,14 +1,18 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <scheme name="Default">
-  <style name="default"      fore="#000000" back="#FFFEEB" />
-  <style name="character"    fore="#C7611C" back="#FFFEEB" />
-  <style name="comment"      fore="#575757" back="#FFFEEB" />
-  <style name="identifier"   fore="#000000" back="#FFFEEB" />
-  <style name="keyword"      fore="#234CC1" back="#FFFEEB" />
-  <style name="member_ref"   fore="#741A1A" back="#FFFEEB" />
-  <style name="number"       fore="#137789" back="#FFFEEB" />
-  <style name="preprocessor" fore="#A7933D" back="#FFFEEB" />
-  <style name="punctuation"  fore="#000000" back="#FFFEEB" />
-  <style name="string"       fore="#C7611C" back="#FFFEEB" />
-  <style name="type_name"    fore="#671179" back="#FFFEEB" />
+  <style name="default"            fore="#000000" back="#FFFEEB" />
+  <style name="character"          fore="#C7611C" back="#FFFEEB" />
+  <style name="comment"            fore="#575757" back="#FFFEEB" />
+  <style name="identifier"         fore="#000000" back="#FFFEEB" />
+  <style name="keyword"            fore="#234CC1" back="#FFFEEB" />
+  <style name="member_ref"         fore="#741A1A" back="#FFFEEB" />
+  <style name="number"             fore="#137789" back="#FFFEEB" />
+  <style name="literal"            fore="#137789" back="#FFFEEB" />
+  <style name="preprocessor"       fore="#A7933D" back="#FFFEEB" />
+  <style name="punctuation"        fore="#000000" back="#FFFEEB" />
+  <style name="string"             fore="#C7611C" back="#FFFEEB" />
+  <style name="type_name"          fore="#671179" back="#FFFEEB" />
+  <style name="function_call"      fore="#000000" back="#FFFEEB" />
+  <style name="diagnostic_error"   fore="#E42F2F" />
+  <style name="diagnostic_warning" fore="#1E7C13" />
 </scheme>

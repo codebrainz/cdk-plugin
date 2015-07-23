@@ -454,6 +454,8 @@ cdk_style_schemes_init (void)
   add_map ("type_name", CDK_STYLE_TYPE_NAME);
   add_map ("function_call", CDK_STYLE_FUNCTION_CALL);
   add_map ("character", CDK_STYLE_CHARACTER);
+  add_map ("diagnostic_warning", CDK_STYLE_DIAGNOSTIC_WARNING);
+  add_map ("diagnostic_error", CDK_STYLE_DIAGNOSTIC_ERROR);
 
   // Map libclang CXTokenKinds to CdkStyleIDs
   add_token (CXToken_Punctuation, CDK_STYLE_PUNCTUATION);
@@ -500,4 +502,17 @@ cdk_style_id_for_cursor_kind (guint cursor_kind)
   if (G_UNLIKELY (cursor_map == NULL))
     return CDK_STYLE_DEFAULT;
   return GPOINTER_TO_SIZE (g_hash_table_lookup (cursor_map, GSIZE_TO_POINTER (cursor_kind)));
+}
+
+gboolean
+cdk_style_id_is_for_syntax (CdkStyleID id)
+{
+  switch (id)
+    {
+    case CDK_STYLE_DIAGNOSTIC_ERROR:
+    case CDK_STYLE_DIAGNOSTIC_WARNING:
+      return FALSE;
+    default:
+      return TRUE;
+    }
 }

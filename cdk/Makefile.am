@@ -19,6 +19,8 @@ libcdk_la_SOURCES = \
 	cdk.h \
 	cdkcompleter.c \
 	cdkcompleter.h \
+	cdkdiagnostics.c \
+	cdkdiagnostics.h \
 	cdkdocumenthelper.c \
 	cdkdocumenthelper.h \
 	cdkhighlighter.c \
@@ -36,6 +38,7 @@ cdkincludedir = $(includedir)/cdk
 cdkinclude_HEADERS = \
 	cdk.h \
 	cdkcompleter.h \
+	cdkdiagnostics.h \
 	cdkdocumenthelper.h \
 	cdkhighlighter.h \
 	cdkplugin.h \

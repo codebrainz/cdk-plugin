@@ -47,6 +47,7 @@ gboolean cdk_style_scheme_reload (CdkStyleScheme *self);
 
 CdkStyleID cdk_style_id_for_token_kind (guint token_kind);
 CdkStyleID cdk_style_id_for_cursor_kind (guint cursor_kind);
+gboolean cdk_style_id_is_for_syntax (CdkStyleID id);
 
 G_END_DECLS
 
