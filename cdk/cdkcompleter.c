@@ -9,22 +9,19 @@
 #include <geanyplugin.h>
 #include <clang-c/Index.h>
 
-#define PRIV_SCI(self) (self)->priv->doc->editor->sci
 #define SSM(sci, msg, uptr, sptr) \
   scintilla_send_message (SCINTILLA (sci), (guint)(msg), (uptr_t)(uptr), (sptr_t)(sptr))
 
 struct CdkCompleterPrivate_
 {
-  GeanyDocument *doc;
   gulong sci_handler;
-  CdkPlugin *plugin;
+  uptr_t prev_autoc_order;
+  uptr_t prev_autoc_sep;
 };
 
 enum
 {
   PROP_0,
-  PROP_DOCUMENT,
-  PROP_PLUGIN,
   NUM_PROPERTIES,
 };
 
@@ -39,36 +36,61 @@ static void cdk_completer_set_property (GObject *object,
                                          guint prop_id,
                                          const GValue *value,
                                          GParamSpec *pspec);
+static void cdk_completer_sci_notify (CdkCompleter *self,
+                                      gint unused,
+                                      SCNotification *notif,
+                                      ScintillaObject *sci);
 
-G_DEFINE_TYPE (CdkCompleter, cdk_completer, G_TYPE_OBJECT)
+G_DEFINE_TYPE (CdkCompleter, cdk_completer, CDK_TYPE_DOCUMENT_HELPER)
+
+static void
+cdk_completer_initialize_document (CdkDocumentHelper *object,
+                                   GeanyDocument *document)
+{
+  CdkCompleter *self = CDK_COMPLETER (object);
+  ScintillaObject *sci = document->editor->sci;
+
+  self->priv->prev_autoc_order = SSM (sci, SCI_AUTOCGETORDER, 0, 0);
+  self->priv->prev_autoc_sep = SSM (sci, SCI_AUTOCGETSEPARATOR, 0, 0);
+
+  SSM (sci, SCI_AUTOCSETORDER, SC_ORDER_PERFORMSORT, 0);
+  SSM (sci, SCI_AUTOCSETSEPARATOR, '\n', 0);
+  self->priv->sci_handler =
+    g_signal_connect_swapped (sci, "sci-notify",
+                              G_CALLBACK (cdk_completer_sci_notify), self);
+}
+
+static void
+cdk_completer_deinitialize_document (CdkCompleter  *self,
+                                     GeanyDocument *document)
+{
+  ScintillaObject *sci = document->editor->sci;
+
+  if (self->priv->sci_handler > 0)
+    g_signal_handler_disconnect (sci, self->priv->sci_handler);
+
+  SSM (sci, SCI_AUTOCSETORDER, self->priv->prev_autoc_order, 0);
+  SSM (sci, SCI_AUTOCSETSEPARATOR, self->priv->prev_autoc_sep, 0);
+}
 
 static void
 cdk_completer_class_init (CdkCompleterClass *klass)
 {
   GObjectClass *g_object_class;
+  CdkDocumentHelperClass *dh_object_class;
 
   g_object_class = G_OBJECT_CLASS (klass);
+  dh_object_class = CDK_DOCUMENT_HELPER_CLASS (klass);
+
+  dh_object_class->initialize = cdk_completer_initialize_document;
 
   g_object_class->finalize = cdk_completer_finalize;
   g_object_class->get_property = cdk_completer_get_property;
   g_object_class->set_property = cdk_completer_set_property;
 
-  cdk_completer_properties[PROP_DOCUMENT] =
-    g_param_spec_pointer ("document",
-                          "GeanyDocument",
-                          "The Geany document using this completer",
-                          G_PARAM_CONSTRUCT | G_PARAM_READWRITE);
-
-  cdk_completer_properties[PROP_PLUGIN] =
-    g_param_spec_object ("plugin",
-                         "Plugin",
-                         "The main plugin that owns this CdkCompleter",
-                         CDK_TYPE_PLUGIN,
-                         G_PARAM_CONSTRUCT | G_PARAM_READWRITE);
-
-  g_object_class_install_properties (g_object_class,
-                                     NUM_PROPERTIES,
-                                     cdk_completer_properties);
+  //g_object_class_install_properties (g_object_class,
+  //                                   NUM_PROPERTIES,
+  //                                   cdk_completer_properties);
 
   g_type_class_add_private ((gpointer)klass, sizeof (CdkCompleterPrivate));
 }
@@ -82,12 +104,8 @@ cdk_completer_finalize (GObject *object)
 
   self = CDK_COMPLETER (object);
 
-  if (DOC_VALID (self->priv->doc))
-    {
-      if (self->priv->sci_handler > 0)
-        g_signal_handler_disconnect (PRIV_SCI (self), self->priv->sci_handler);
-      g_object_remove_weak_pointer (G_OBJECT (PRIV_SCI (self)), (gpointer*) &self->priv->doc);
-    }
+  GeanyDocument *doc = cdk_document_helper_get_document (CDK_DOCUMENT_HELPER (self));
+  cdk_completer_deinitialize_document (self, doc);
 
   G_OBJECT_CLASS (cdk_completer_parent_class)->finalize (object);
 }
@@ -96,8 +114,6 @@ static void
 cdk_completer_init (CdkCompleter *self)
 {
   self->priv = G_TYPE_INSTANCE_GET_PRIVATE (self, CDK_TYPE_COMPLETER, CdkCompleterPrivate);
-  self->priv->doc = NULL;
-  self->priv->plugin = NULL;
 }
 
 static void
@@ -110,12 +126,6 @@ cdk_completer_get_property (GObject *object,
 
   switch (prop_id)
     {
-    case PROP_DOCUMENT:
-      g_value_set_pointer (value, cdk_completer_get_document (self));
-      break;
-    case PROP_PLUGIN:
-      g_value_set_object (value, self->priv->plugin);
-      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -132,12 +142,6 @@ cdk_completer_set_property (GObject *object,
 
   switch (prop_id)
     {
-    case PROP_DOCUMENT:
-      cdk_completer_set_document (self, g_value_get_pointer (value));
-      break;
-    case PROP_PLUGIN:
-      self->priv->plugin = g_value_get_object (value);
-      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -147,17 +151,7 @@ cdk_completer_set_property (GObject *object,
 CdkCompleter *
 cdk_completer_new (struct CdkPlugin_ *plugin, GeanyDocument *doc)
 {
-  return g_object_new (CDK_TYPE_COMPLETER,
-                       "plugin", plugin,
-                       "document", doc,
-                       NULL);
-}
-
-struct GeanyDocument *
-cdk_completer_get_document (CdkCompleter *self)
-{
-  g_return_val_if_fail (CDK_IS_COMPLETER (self), NULL);
-  return self->priv->doc;
+  return g_object_new (CDK_TYPE_COMPLETER, "plugin", plugin, "document", doc, NULL);
 }
 
 static void
@@ -166,11 +160,11 @@ cdk_completer_complete (CdkCompleter *self,
                         gint current_pos,
                         const gchar *current_word)
 {
-  GeanyDocument *doc = self->priv->doc;
-  if (! DOC_VALID (doc))
-    return;
+  CdkDocumentHelper *helper = CDK_DOCUMENT_HELPER (self);
+  GeanyDocument *doc = cdk_document_helper_get_document (helper);
   ScintillaObject *sci = doc->editor->sci;
-  CXTranslationUnit tu = cdk_plugin_get_translation_unit (self->priv->plugin, doc);
+  CdkPlugin *plugin = cdk_document_helper_get_plugin (helper);
+  CXTranslationUnit tu = cdk_plugin_get_translation_unit (plugin, doc);
   if (tu == NULL)
     return;
 
@@ -231,7 +225,7 @@ cdk_completer_complete (CdkCompleter *self,
 }
 
 static void
-cdk_completer_handle_key (CdkCompleter *completer,
+cdk_completer_handle_key (CdkCompleter *self,
                           ScintillaObject *sci,
                           gint offset)
 {
@@ -253,58 +247,20 @@ cdk_completer_handle_key (CdkCompleter *completer,
       tr.chrg.cpMin = word_start;
       tr.chrg.cpMax = offset;
       SSM (sci, SCI_GETTEXTRANGE, 0, &tr);
-      cdk_completer_complete (completer, word_start, offset, tr.lpstrText);
+      cdk_completer_complete (self, word_start, offset, tr.lpstrText);
       g_free (tr.lpstrText);
     }
 }
 
 static void
-cdk_completer_sci_notify (CdkCompleter *completer,
+cdk_completer_sci_notify (CdkCompleter *self,
                           gint unused,
                           SCNotification *notif,
                           ScintillaObject *sci)
 {
-  GeanyDocument *doc = cdk_completer_get_document (completer);
-  if (! DOC_VALID (doc))
-    return;
   if (notif->nmhdr.code == SCN_CHARADDED)
     {
       gint offset = SSM (sci, SCI_GETCURRENTPOS, 0, 0);
-      cdk_completer_handle_key (completer, sci, offset);
+      cdk_completer_handle_key (self, sci, offset);
     }
-}
-
-void
-cdk_completer_set_document (CdkCompleter *self, struct GeanyDocument *doc)
-{
-  g_return_if_fail (CDK_IS_COMPLETER (self));
-  g_return_if_fail (doc == NULL || DOC_VALID (doc));
-
-  if (doc == self->priv->doc)
-    return;
-
-  if (DOC_VALID (self->priv->doc))
-    {
-      if (self->priv->sci_handler > 0)
-        g_signal_handler_disconnect (PRIV_SCI (self), self->priv->sci_handler);
-      g_object_remove_weak_pointer (G_OBJECT (PRIV_SCI (self)), (gpointer*) &self->priv->doc);
-    }
-
-  self->priv->doc = doc;
-  self->priv->sci_handler = 0;
-
-  if (DOC_VALID (self->priv->doc))
-    {
-      self->priv->sci_handler =
-        g_signal_connect_swapped (PRIV_SCI (self),
-                                  "sci-notify",
-                                  G_CALLBACK (cdk_completer_sci_notify),
-                                  self);
-      g_object_add_weak_pointer (G_OBJECT (PRIV_SCI (self)), (gpointer*) &self->priv->doc);
-
-      SSM (doc->editor->sci, SCI_AUTOCSETORDER, SC_ORDER_PERFORMSORT, 0);
-      SSM (doc->editor->sci, SCI_AUTOCSETSEPARATOR, '\n', 0);
-    }
-
-  g_object_notify (G_OBJECT (self), "document");
 }

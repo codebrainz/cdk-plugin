@@ -6,12 +6,9 @@
 #ifndef CDK_COMPLETER_H_
 #define CDK_COMPLETER_H_ 1
 
-#include <glib-object.h>
+#include <cdk/cdkdocumenthelper.h>
 
 G_BEGIN_DECLS
-
-struct GeanyDocument;
-struct CdkPlugin_;
 
 #define CDK_TYPE_COMPLETER            (cdk_completer_get_type ())
 #define CDK_COMPLETER(obj)            (G_TYPE_CHECK_INSTANCE_CAST ((obj), CDK_TYPE_COMPLETER, CdkCompleter))
@@ -26,19 +23,17 @@ typedef struct CdkCompleterPrivate_ CdkCompleterPrivate;
 
 struct CdkCompleter_
 {
-  GObject parent;
+  CdkDocumentHelper parent;
   CdkCompleterPrivate *priv;
 };
 
 struct CdkCompleterClass_
 {
-  GObjectClass parent_class;
+  CdkDocumentHelperClass parent_class;
 };
 
 GType cdk_completer_get_type (void);
 CdkCompleter *cdk_completer_new (struct CdkPlugin_ *plugin, struct GeanyDocument *doc);
-struct GeanyDocument *cdk_completer_get_document (CdkCompleter *self);
-void cdk_completer_set_document (CdkCompleter *self, struct GeanyDocument *doc);
 CdkCompleter *cdk_document_get_completer (struct GeanyDocument *doc);
 
 G_END_DECLS
