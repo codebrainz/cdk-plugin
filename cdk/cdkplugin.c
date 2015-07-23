@@ -3,6 +3,10 @@
  * All rights reserved. See the COPYING file for full license.
  */
 
+#ifdef HAVE_CONFIG_H
+# include "config.h"
+#endif
+
 #include <cdk/cdkplugin.h>
 #include <cdk/cdkhighlighter.h>
 #include <cdk/cdkcompleter.h>
