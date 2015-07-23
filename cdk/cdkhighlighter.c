@@ -10,19 +10,18 @@
 #include <SciLexer.h>
 #include <clang-c/Index.h>
 
+#define CDK_HIGHLIGHTER_TIMEOUT 500
 #define SSM(sci, msg, uptr, sptr) \
   scintilla_send_message (SCINTILLA (sci), (guint)(msg), (uptr_t)(uptr), (sptr_t)(sptr))
 
 struct CdkHighlighterPrivate_
 {
-  CdkPlugin *plugin;        // the plugin that owns this
-  GeanyDocument *doc;       // the GeanyDocument being highlighted
   gulong editor_notif_hnd;  // editor-notify (sci-notify) handler
   gulong update_hnd;        // update handler
   gint timeout;             // timeout for update handler
   gint start_pos, end_pos;  // start/end of update range
   CdkStyleScheme *scheme;   // the style scheme being applied
-  gulong scheme_reload_hnd; // handler to update h/l when scheme is reloaded
+  glong prev_lexer;         // the lexer the document had previously
 };
 
 enum
@@ -34,8 +33,6 @@ enum
 enum
 {
   PROP_0,
-  PROP_PLUGIN,
-  PROP_DOCUMENT,
   PROP_SCHEME,
   NUM_PROPERTIES,
 };
@@ -53,15 +50,64 @@ static gboolean cdk_highlighter_editor_notify (GtkWidget *widget,
                                                SCNotification *nt,
                                                CdkHighlighter *self);
 
-G_DEFINE_TYPE (CdkHighlighter, cdk_highlighter, G_TYPE_OBJECT)
+G_DEFINE_TYPE (CdkHighlighter, cdk_highlighter, CDK_TYPE_DOCUMENT_HELPER)
+
+static void
+cdk_highlighter_constructed (GObject *object)
+{
+  G_OBJECT_CLASS (cdk_highlighter_parent_class)->constructed (object);
+  // bind the plugin's style-scheme property to this highlighter's
+  CdkPlugin *plugin = cdk_document_helper_get_plugin (CDK_DOCUMENT_HELPER (object));
+  g_return_if_fail (CDK_IS_PLUGIN (plugin));
+  g_object_bind_property (plugin, "style-scheme", object, "style-scheme", G_BINDING_SYNC_CREATE);
+}
+
+static void
+cdk_highlighter_initialize_document (CdkDocumentHelper *object,
+                                     GeanyDocument     *document)
+{
+  CdkHighlighter *self = CDK_HIGHLIGHTER (object);
+  ScintillaObject *sci = document->editor->sci;
+
+  // disable the built-in lexer
+  self->priv->prev_lexer = SSM (sci, SCI_GETLEXER, 0, 0);
+  SSM (sci, SCI_SETLEXER, SCLEX_CONTAINER, 0);
+
+  self->priv->editor_notif_hnd =
+    g_signal_connect (sci, "sci-notify", G_CALLBACK (cdk_highlighter_editor_notify), self);
+}
+
+static void
+cdk_highlighter_deinitialize_document (CdkHighlighter *self,
+                                       GeanyDocument  *document)
+{
+  ScintillaObject *sci = document->editor->sci;
+  if (self->priv->editor_notif_hnd > 0)
+    g_signal_handler_disconnect (document->editor->sci, self->priv->editor_notif_hnd);
+
+  // Reset the styles to some sane default, Geany will re-highlight eventually
+  SSM (sci, SCI_STYLESETFORE, STYLE_DEFAULT, 0);
+  SSM (sci, SCI_STYLESETBACK, STYLE_DEFAULT, 0xffffff);
+  SSM (sci, SCI_STYLESETBOLD, STYLE_DEFAULT, FALSE);
+  SSM (sci, SCI_STYLESETITALIC, STYLE_DEFAULT, FALSE);
+  SSM (sci, SCI_STYLECLEARALL, 0, 0);
+
+  // Restore the previous lexer
+  SSM (sci, SCI_SETLEXER, self->priv->prev_lexer, 0);
+}
 
 static void
 cdk_highlighter_class_init (CdkHighlighterClass *klass)
 {
   GObjectClass *g_object_class;
+  CdkDocumentHelperClass *dh_object_class;
 
   g_object_class = G_OBJECT_CLASS (klass);
+  dh_object_class = CDK_DOCUMENT_HELPER_CLASS (klass);
 
+  dh_object_class->initialize = cdk_highlighter_initialize_document;
+
+  g_object_class->constructed = cdk_highlighter_constructed;
   g_object_class->finalize = cdk_highlighter_finalize;
   g_object_class->get_property = cdk_highlighter_get_property;
   g_object_class->set_property = cdk_highlighter_set_property;
@@ -74,19 +120,6 @@ cdk_highlighter_class_init (CdkHighlighterClass *klass)
                   g_cclosure_marshal_VOID__POINTER,
                   G_TYPE_NONE,
                   1, G_TYPE_POINTER);
-
-  cdk_highlighter_properties[PROP_PLUGIN] =
-    g_param_spec_object ("plugin",
-                         "Plugin",
-                         "The plugin that owns this highlighter",
-                         CDK_TYPE_PLUGIN,
-                         G_PARAM_CONSTRUCT | G_PARAM_READWRITE);
-
-  cdk_highlighter_properties[PROP_DOCUMENT] =
-    g_param_spec_pointer ("document",
-                          "Document",
-                          "The document this highlighter highlights",
-                          G_PARAM_CONSTRUCT | G_PARAM_READWRITE);
 
   cdk_highlighter_properties[PROP_SCHEME] =
     g_param_spec_object ("style-scheme",
@@ -110,18 +143,14 @@ cdk_highlighter_finalize (GObject *object)
 
   self = CDK_HIGHLIGHTER (object);
 
-  if (DOC_VALID (self->priv->doc) && self->priv->editor_notif_hnd > 0)
-    g_signal_handler_disconnect (self->priv->doc->editor->sci, self->priv->editor_notif_hnd);
+  cdk_highlighter_deinitialize_document (self,
+    cdk_document_helper_get_document (CDK_DOCUMENT_HELPER (self)));
 
   if (self->priv->update_hnd > 0)
     g_source_remove (self->priv->update_hnd);
 
   if (G_IS_OBJECT (self->priv->scheme))
-    {
-      if (self->priv->scheme_reload_hnd > 0)
-        g_signal_handler_disconnect (self->priv->scheme, self->priv->scheme_reload_hnd);
-      g_object_unref (self->priv->scheme);
-    }
+    g_object_unref (self->priv->scheme);
 
   G_OBJECT_CLASS (cdk_highlighter_parent_class)->finalize (object);
 }
@@ -130,11 +159,7 @@ static void
 cdk_highlighter_init (CdkHighlighter *self)
 {
   self->priv = G_TYPE_INSTANCE_GET_PRIVATE (self, CDK_TYPE_HIGHLIGHTER, CdkHighlighterPrivate);
-  self->priv->plugin = NULL;
-  self->priv->doc = NULL;
-  self->priv->update_hnd = 0;
-  self->priv->timeout = 500;
-  self->priv->scheme = NULL;
+  self->priv->timeout = CDK_HIGHLIGHTER_TIMEOUT;
 }
 
 static void
@@ -144,15 +169,8 @@ cdk_highlighter_get_property (GObject *object,
                               GParamSpec *pspec)
 {
   CdkHighlighter *self = CDK_HIGHLIGHTER (object);
-
   switch (prop_id)
     {
-    case PROP_PLUGIN:
-      g_value_set_object (value, self->priv->plugin);
-      break;
-    case PROP_DOCUMENT:
-      g_value_set_pointer (value, self->priv->doc);
-      break;
     case PROP_SCHEME:
       g_value_set_object (value, cdk_highlighter_get_style_scheme (self));
       break;
@@ -169,15 +187,8 @@ cdk_highlighter_set_property (GObject *object,
                               GParamSpec *pspec)
 {
   CdkHighlighter *self = CDK_HIGHLIGHTER (object);
-
   switch (prop_id)
     {
-    case PROP_PLUGIN:
-      cdk_highlighter_set_plugin (self, g_value_get_object (value));
-      break;
-    case PROP_DOCUMENT:
-      cdk_highlighter_set_document (self, g_value_get_pointer (value));
-      break;
     case PROP_SCHEME:
       cdk_highlighter_set_style_scheme (self, g_value_get_object (value));
       break;
@@ -188,97 +199,9 @@ cdk_highlighter_set_property (GObject *object,
 }
 
 CdkHighlighter *
-cdk_highlighter_new (CdkPlugin *plugin, struct GeanyDocument *doc)
+cdk_highlighter_new (struct CdkPlugin_ *plugin, struct GeanyDocument *doc)
 {
-  return g_object_new (CDK_TYPE_HIGHLIGHTER,
-                       "plugin", plugin,
-                       "document", doc, NULL);
-}
-
-CdkPlugin *
-cdk_highlighter_get_plugin (CdkHighlighter *self)
-{
-  g_return_val_if_fail (CDK_IS_HIGHLIGHTER (self), NULL);
-  return self->priv->plugin;
-}
-
-void
-cdk_highlighter_set_plugin (CdkHighlighter *self, CdkPlugin *plugin)
-{
-  g_return_if_fail (CDK_IS_HIGHLIGHTER (self));
-  g_return_if_fail (CDK_IS_PLUGIN (plugin));
-  self->priv->plugin = plugin;
-  if (CDK_IS_PLUGIN (self->priv->plugin))
-    cdk_highlighter_set_style_scheme (self, cdk_plugin_get_style_scheme (plugin));
-  g_object_notify (G_OBJECT (self), "plugin");
-}
-
-struct GeanyDocument *
-cdk_highlighter_get_document (CdkHighlighter *self)
-{
-  g_return_val_if_fail (CDK_IS_HIGHLIGHTER (self), NULL);
-  return self->priv->doc;
-}
-
-void
-cdk_highlighter_set_document (CdkHighlighter *self, struct GeanyDocument *doc)
-{
-  g_return_if_fail (CDK_IS_HIGHLIGHTER (self));
-
-  if (DOC_VALID (self->priv->doc))
-    {
-      if (self->priv->editor_notif_hnd > 0)
-        g_signal_handler_disconnect (self->priv->doc->editor->sci, self->priv->editor_notif_hnd);
-      self->priv->editor_notif_hnd = 0;
-    }
-
-  // TODO: save the previous lexer and restore it when removing document
-  self->priv->doc = doc;
-  if (DOC_VALID (self->priv->doc))
-    {
-      ScintillaObject *sci = self->priv->doc->editor->sci;
-
-      // disable the built-in lexer
-      SSM (sci, SCI_SETLEXER, SCLEX_CONTAINER, 0);
-
-      CdkStyle *def_style = cdk_style_scheme_get_style (self->priv->scheme, CDK_STYLE_DEFAULT);
-      if (def_style != NULL)
-        {
-          // apply default style to all styles first
-          SSM (sci, SCI_STYLESETFORE, STYLE_DEFAULT, def_style->fore);
-          SSM (sci, SCI_STYLESETBACK, STYLE_DEFAULT, def_style->back);
-          SSM (sci, SCI_STYLESETBOLD, STYLE_DEFAULT, def_style->bold);
-          SSM (sci, SCI_STYLESETITALIC, STYLE_DEFAULT, def_style->italic);
-        }
-      else
-        {
-          // sane fallback for all styles
-          SSM (sci, SCI_STYLESETFORE, STYLE_DEFAULT, 0x000000);
-          SSM (sci, SCI_STYLESETBACK, STYLE_DEFAULT, 0xffffff);
-          SSM (sci, SCI_STYLESETBOLD, STYLE_DEFAULT, FALSE);
-          SSM (sci, SCI_STYLESETITALIC, STYLE_DEFAULT, FALSE);
-        }
-      SSM (sci, SCI_STYLECLEARALL, 0, 0);
-
-      // set the styles used by the highlighter
-      for (gint i = 0; i < CDK_NUM_STYLES; i++)
-        {
-          CdkStyle *style = cdk_style_scheme_get_style (self->priv->scheme, i);
-
-          if (style == NULL)
-            continue;
-
-          SSM (sci, SCI_STYLESETFORE, i, style->fore);
-          SSM (sci, SCI_STYLESETBACK, i, style->back);
-          SSM (sci, SCI_STYLESETBOLD, i, style->bold);
-          SSM (sci, SCI_STYLESETITALIC, i, style->italic);
-        }
-      //g_debug ("setup %u styles", (guint) CDK_NUM_STYLES);
-      self->priv->editor_notif_hnd =
-        g_signal_connect (sci, "sci-notify", G_CALLBACK (cdk_highlighter_editor_notify), self);
-      cdk_highlighter_highlight (self, 0, SSM (sci, SCI_GETLENGTH, 0, 0));
-    }
-  g_object_notify (G_OBJECT (self), "document");
+  return g_object_new (CDK_TYPE_HIGHLIGHTER, "plugin", plugin, "document", doc, NULL);
 }
 
 static void
@@ -319,13 +242,15 @@ cdk_highlighter_editor_notify (GtkWidget *widget,
 
 gboolean
 cdk_highlighter_highlight (CdkHighlighter *self,
-                           guint start_pos,
-                           guint end_pos)
+                           gint start_pos,
+                           gint end_pos)
 {
   g_return_val_if_fail (CDK_IS_HIGHLIGHTER (self), FALSE);
 
-  GeanyDocument *doc = self->priv->doc;
-  CXTranslationUnit tu = cdk_plugin_get_translation_unit (self->priv->plugin, doc);
+  CdkDocumentHelper *helper = CDK_DOCUMENT_HELPER (self);
+  GeanyDocument *doc = cdk_document_helper_get_document (helper);
+  CdkPlugin *plugin = cdk_document_helper_get_plugin (helper);
+  CXTranslationUnit tu = cdk_plugin_get_translation_unit (plugin, doc);
   if (tu == NULL)
     return FALSE;
 
@@ -355,11 +280,11 @@ cdk_highlighter_highlight (CdkHighlighter *self,
       CXSourceRange range = clang_getTokenExtent (tu, tokens[i]);
       CXSourceLocation start_loc = clang_getRangeStart (range);
       CXSourceLocation end_loc = clang_getRangeEnd (range);
-      guint start_pos = 0, end_pos = 0;
-      clang_getSpellingLocation (start_loc, NULL, NULL, NULL, &start_pos);
-      clang_getSpellingLocation (end_loc, NULL, NULL, NULL, &end_pos);
+      guint start_p = 0, end_p = 0;
+      clang_getSpellingLocation (start_loc, NULL, NULL, NULL, &start_p);
+      clang_getSpellingLocation (end_loc, NULL, NULL, NULL, &end_p);
 
-      cdk_highlighter_apply_style (self, doc, style_id, start_pos, end_pos);
+      cdk_highlighter_apply_style (self, doc, style_id, start_p, end_p);
     }
 
   g_free (cursors);
@@ -370,6 +295,15 @@ cdk_highlighter_highlight (CdkHighlighter *self,
   //g_debug ("highlighted %u tokens", n_tokens);
 
   return TRUE;
+}
+
+gboolean
+cdk_highlighter_highlight_all (CdkHighlighter *self)
+{
+  GeanyDocument *doc = cdk_document_helper_get_document (CDK_DOCUMENT_HELPER (self));
+  ScintillaObject *sci = doc->editor->sci;
+  gint length = SSM (sci, SCI_GETLENGTH, 0, 0);
+  return cdk_highlighter_highlight (self, 0, length);
 }
 
 static gboolean
@@ -419,17 +353,6 @@ cdk_highlighter_get_style_scheme (CdkHighlighter *self)
   return self->priv->scheme;
 }
 
-static void
-on_scheme_reload (CdkStyleScheme *scheme, CdkHighlighter *self)
-{
-  if (DOC_VALID (self->priv->doc))
-    {
-      ScintillaObject *sci = self->priv->doc->editor->sci;
-      gint end = SSM (sci, SCI_GETTEXTLENGTH, 0, 0);
-      cdk_highlighter_highlight (self, 0, end);
-    }
-}
-
 void
 cdk_highlighter_set_style_scheme (CdkHighlighter *self, CdkStyleScheme *scheme)
 {
@@ -438,25 +361,53 @@ cdk_highlighter_set_style_scheme (CdkHighlighter *self, CdkStyleScheme *scheme)
   if (scheme != self->priv->scheme)
     {
       if (G_IS_OBJECT (self->priv->scheme))
-        {
-          if (self->priv->scheme_reload_hnd > 0)
-            g_signal_handler_disconnect (self->priv->scheme, self->priv->scheme_reload_hnd);
-          self->priv->scheme_reload_hnd = 0;
-          g_object_unref (self->priv->scheme);
-          self->priv->scheme = NULL;
-        }
+        g_object_unref (self->priv->scheme);
+      self->priv->scheme = NULL;
 
       if (CDK_IS_STYLE_SCHEME (scheme))
         {
           self->priv->scheme = g_object_ref (scheme);
-          self->priv->scheme_reload_hnd =
-            g_signal_connect (self->priv->scheme, "reloaded",
-                              G_CALLBACK (on_scheme_reload), self);
+
+          GeanyDocument *doc = cdk_document_helper_get_document (CDK_DOCUMENT_HELPER (self));
+          ScintillaObject *sci = doc->editor->sci;
+
+          // Apply the new scheme
+          CdkStyle *def_style = cdk_style_scheme_get_style (self->priv->scheme, CDK_STYLE_DEFAULT);
+          if (def_style != NULL)
+            {
+              // apply default style to all styles first
+              SSM (sci, SCI_STYLESETFORE, STYLE_DEFAULT, def_style->fore);
+              SSM (sci, SCI_STYLESETBACK, STYLE_DEFAULT, def_style->back);
+              SSM (sci, SCI_STYLESETBOLD, STYLE_DEFAULT, def_style->bold);
+              SSM (sci, SCI_STYLESETITALIC, STYLE_DEFAULT, def_style->italic);
+            }
+          else
+            {
+              // sane fallback for all styles
+              SSM (sci, SCI_STYLESETFORE, STYLE_DEFAULT, 0x000000);
+              SSM (sci, SCI_STYLESETBACK, STYLE_DEFAULT, 0xffffff);
+              SSM (sci, SCI_STYLESETBOLD, STYLE_DEFAULT, FALSE);
+              SSM (sci, SCI_STYLESETITALIC, STYLE_DEFAULT, FALSE);
+            }
+          SSM (sci, SCI_STYLECLEARALL, 0, 0);
+
+          // set the styles used by the highlighter
+          for (gint i = 0; i < CDK_NUM_STYLES; i++)
+            {
+              CdkStyle *style = cdk_style_scheme_get_style (self->priv->scheme, i);
+
+              if (style == NULL)
+                continue;
+
+              SSM (sci, SCI_STYLESETFORE, i, style->fore);
+              SSM (sci, SCI_STYLESETBACK, i, style->back);
+              SSM (sci, SCI_STYLESETBOLD, i, style->bold);
+              SSM (sci, SCI_STYLESETITALIC, i, style->italic);
+            }
+
+          cdk_highlighter_highlight_all (self);
         }
 
-      // apply the new style scheme
-      on_scheme_reload (scheme, self);
-
       g_object_notify (G_OBJECT (self), "style-scheme");
-  }
+    }
 }

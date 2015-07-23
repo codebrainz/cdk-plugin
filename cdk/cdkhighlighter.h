@@ -6,8 +6,8 @@
 #ifndef CDKHIGHLIGHTER_H_
 #define CDKHIGHLIGHTER_H_ 1
 
+#include <cdk/cdkdocumenthelper.h>
 #include <cdk/cdkstylescheme.h>
-#include <cdk/cdkplugin.h>
 #include <glib-object.h>
 
 G_BEGIN_DECLS
@@ -25,22 +25,19 @@ typedef struct CdkHighlighterPrivate_ CdkHighlighterPrivate;
 
 struct CdkHighlighter_
 {
-  GObject parent;
+  CdkDocumentHelper parent;
   CdkHighlighterPrivate *priv;
 };
 
 struct CdkHighlighterClass_
 {
-  GObjectClass parent_class;
+  CdkDocumentHelperClass parent_class;
 };
 
 GType cdk_highlighter_get_type (void);
-CdkHighlighter *cdk_highlighter_new (CdkPlugin *plugin, struct GeanyDocument *doc);
-CdkPlugin *cdk_highlighter_get_plugin (CdkHighlighter *self);
-void cdk_highlighter_set_plugin (CdkHighlighter *self, CdkPlugin *plugin);
-struct GeanyDocument *cdk_highlighter_get_document (CdkHighlighter *self);
-void cdk_highlighter_set_document (CdkHighlighter *self, struct GeanyDocument *doc);
-gboolean cdk_highlighter_highlight (CdkHighlighter *self, guint start_pos, guint end_pos);
+CdkHighlighter *cdk_highlighter_new (struct CdkPlugin_ *plugin, struct GeanyDocument *doc);
+gboolean cdk_highlighter_highlight (CdkHighlighter *self, gint start_pos, gint end_pos);
+gboolean cdk_highlighter_highlight_all (CdkHighlighter *self);
 void cdk_highlighter_queue_highlight (CdkHighlighter *self, gint start_pos, gint end_pos);
 CdkStyleScheme *cdk_highlighter_get_style_scheme (CdkHighlighter *self);
 void cdk_highlighter_set_style_scheme (CdkHighlighter *self, CdkStyleScheme *scheme);
