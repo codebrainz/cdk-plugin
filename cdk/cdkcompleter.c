@@ -9,9 +9,6 @@
 #include <geanyplugin.h>
 #include <clang-c/Index.h>
 
-#define SSM(sci, msg, uptr, sptr) \
-  scintilla_send_message (SCINTILLA (sci), (guint)(msg), (uptr_t)(uptr), (sptr_t)(sptr))
-
 struct CdkCompleterPrivate_
 {
   gulong sci_handler;
@@ -50,11 +47,11 @@ cdk_completer_initialize_document (CdkDocumentHelper *object,
   CdkCompleter *self = CDK_COMPLETER (object);
   ScintillaObject *sci = document->editor->sci;
 
-  self->priv->prev_autoc_order = SSM (sci, SCI_AUTOCGETORDER, 0, 0);
-  self->priv->prev_autoc_sep = SSM (sci, SCI_AUTOCGETSEPARATOR, 0, 0);
+  self->priv->prev_autoc_order = cdk_sci_send (sci, SCI_AUTOCGETORDER, 0, 0);
+  self->priv->prev_autoc_sep = cdk_sci_send (sci, SCI_AUTOCGETSEPARATOR, 0, 0);
 
-  SSM (sci, SCI_AUTOCSETORDER, SC_ORDER_PERFORMSORT, 0);
-  SSM (sci, SCI_AUTOCSETSEPARATOR, '\n', 0);
+  cdk_sci_send (sci, SCI_AUTOCSETORDER, SC_ORDER_PERFORMSORT, 0);
+  cdk_sci_send (sci, SCI_AUTOCSETSEPARATOR, '\n', 0);
   self->priv->sci_handler =
     g_signal_connect_swapped (sci, "sci-notify",
                               G_CALLBACK (cdk_completer_sci_notify), self);
@@ -69,8 +66,8 @@ cdk_completer_deinitialize_document (CdkCompleter  *self,
   if (self->priv->sci_handler > 0)
     g_signal_handler_disconnect (sci, self->priv->sci_handler);
 
-  SSM (sci, SCI_AUTOCSETORDER, self->priv->prev_autoc_order, 0);
-  SSM (sci, SCI_AUTOCSETSEPARATOR, self->priv->prev_autoc_sep, 0);
+  cdk_sci_send (sci, SCI_AUTOCSETORDER, self->priv->prev_autoc_order, 0);
+  cdk_sci_send (sci, SCI_AUTOCSETSEPARATOR, self->priv->prev_autoc_sep, 0);
 }
 
 static void
@@ -183,8 +180,8 @@ cdk_completer_complete (CdkCompleter *self,
 
   gint len = (gint) current_pos - (gint) word_start;
   // libclang uses 1-based line, Scintilla uses 0-based line
-  guint line = SSM (sci, SCI_LINEFROMPOSITION, current_pos, 0) + 1;
-  guint col = SSM (sci, SCI_GETCOLUMN, current_pos, 0);
+  guint line = cdk_sci_send (sci, SCI_LINEFROMPOSITION, current_pos, 0) + 1;
+  guint col = cdk_sci_send (sci, SCI_GETCOLUMN, current_pos, 0);
 
   CXCodeCompleteResults *comp_res =
     clang_codeCompleteAt (tu, doc->real_path, line, col, usf_ptr, n_usf,
@@ -220,7 +217,7 @@ cdk_completer_complete (CdkCompleter *self,
   gchar *compl_list = g_string_free (autoc_str, FALSE);
   g_strstrip (compl_list);
   if (strlen (compl_list) > 0)
-    SSM (sci, SCI_AUTOCSHOW, current_pos - word_start, compl_list);
+    cdk_sci_send (sci, SCI_AUTOCSHOW, current_pos - word_start, compl_list);
   g_free (compl_list);
 }
 
@@ -230,13 +227,13 @@ cdk_completer_handle_key (CdkCompleter *self,
                           gint offset)
 {
   gint prev_ch = '\0';
-  gint word_start = SSM (sci, SCI_WORDSTARTPOSITION, offset, TRUE);
+  gint word_start = cdk_sci_send (sci, SCI_WORDSTARTPOSITION, offset, TRUE);
   gint chr = '\0';
 
   if (offset > 1)
-    prev_ch = SSM (sci, SCI_GETCHARAT, offset - 2, 0);
+    prev_ch = cdk_sci_send (sci, SCI_GETCHARAT, offset - 2, 0);
   if (offset > 0)
-    chr = SSM (sci, SCI_GETCHARAT, offset - 1, 0);
+    chr = cdk_sci_send (sci, SCI_GETCHARAT, offset - 1, 0);
 
   // if dereferencing a struct/class member or at least 3 chars into
   // a word, then show the autocomplete
@@ -246,7 +243,7 @@ cdk_completer_handle_key (CdkCompleter *self,
       tr.lpstrText = g_malloc0 (offset - word_start + 1);
       tr.chrg.cpMin = word_start;
       tr.chrg.cpMax = offset;
-      SSM (sci, SCI_GETTEXTRANGE, 0, &tr);
+      cdk_sci_send (sci, SCI_GETTEXTRANGE, 0, &tr);
       cdk_completer_complete (self, word_start, offset, tr.lpstrText);
       g_free (tr.lpstrText);
     }
@@ -260,7 +257,7 @@ cdk_completer_sci_notify (CdkCompleter *self,
 {
   if (notif->nmhdr.code == SCN_CHARADDED)
     {
-      gint offset = SSM (sci, SCI_GETCURRENTPOS, 0, 0);
+      gint offset = cdk_sci_send (sci, SCI_GETCURRENTPOS, 0, 0);
       cdk_completer_handle_key (self, sci, offset);
     }
 }

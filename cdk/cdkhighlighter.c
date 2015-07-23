@@ -11,8 +11,6 @@
 #include <clang-c/Index.h>
 
 #define CDK_HIGHLIGHTER_TIMEOUT 500
-#define SSM(sci, msg, uptr, sptr) \
-  scintilla_send_message (SCINTILLA (sci), (guint)(msg), (uptr_t)(uptr), (sptr_t)(sptr))
 
 struct CdkHighlighterPrivate_
 {
@@ -70,8 +68,8 @@ cdk_highlighter_initialize_document (CdkDocumentHelper *object,
   ScintillaObject *sci = document->editor->sci;
 
   // disable the built-in lexer
-  self->priv->prev_lexer = SSM (sci, SCI_GETLEXER, 0, 0);
-  SSM (sci, SCI_SETLEXER, SCLEX_CONTAINER, 0);
+  self->priv->prev_lexer = cdk_sci_send (sci, SCI_GETLEXER, 0, 0);
+  cdk_sci_send (sci, SCI_SETLEXER, SCLEX_CONTAINER, 0);
 
   self->priv->editor_notif_hnd =
     g_signal_connect (sci, "sci-notify", G_CALLBACK (cdk_highlighter_editor_notify), self);
@@ -86,14 +84,14 @@ cdk_highlighter_deinitialize_document (CdkHighlighter *self,
     g_signal_handler_disconnect (document->editor->sci, self->priv->editor_notif_hnd);
 
   // Reset the styles to some sane default, Geany will re-highlight eventually
-  SSM (sci, SCI_STYLESETFORE, STYLE_DEFAULT, 0);
-  SSM (sci, SCI_STYLESETBACK, STYLE_DEFAULT, 0xffffff);
-  SSM (sci, SCI_STYLESETBOLD, STYLE_DEFAULT, FALSE);
-  SSM (sci, SCI_STYLESETITALIC, STYLE_DEFAULT, FALSE);
-  SSM (sci, SCI_STYLECLEARALL, 0, 0);
+  cdk_sci_send (sci, SCI_STYLESETFORE, STYLE_DEFAULT, 0);
+  cdk_sci_send (sci, SCI_STYLESETBACK, STYLE_DEFAULT, 0xffffff);
+  cdk_sci_send (sci, SCI_STYLESETBOLD, STYLE_DEFAULT, FALSE);
+  cdk_sci_send (sci, SCI_STYLESETITALIC, STYLE_DEFAULT, FALSE);
+  cdk_sci_send (sci, SCI_STYLECLEARALL, 0, 0);
 
   // Restore the previous lexer
-  SSM (sci, SCI_SETLEXER, self->priv->prev_lexer, 0);
+  cdk_sci_send (sci, SCI_SETLEXER, self->priv->prev_lexer, 0);
 }
 
 static void
@@ -213,10 +211,10 @@ cdk_highlighter_apply_style (CdkHighlighter *self,
 {
   ScintillaObject *sci = doc->editor->sci;
 
-  g_assert (SSM (sci, SCI_GETLEXER, 0, 0) == SCLEX_CONTAINER);
+  g_assert (cdk_sci_send (sci, SCI_GETLEXER, 0, 0) == SCLEX_CONTAINER);
 
-  SSM (sci, SCI_STARTSTYLING, start_pos, 0);
-  SSM (sci, SCI_SETSTYLING, end_pos - start_pos, style_id);
+  cdk_sci_send (sci, SCI_STARTSTYLING, start_pos, 0);
+  cdk_sci_send (sci, SCI_SETSTYLING, end_pos - start_pos, style_id);
 
   //g_debug ("styled token '%u' from '%u' to '%u'", (guint) style_id, start_pos, end_pos);
 }
@@ -231,9 +229,9 @@ cdk_highlighter_editor_notify (GtkWidget *widget,
   if (nt->nmhdr.code != SCN_STYLENEEDED)
     return FALSE;
 
-  guint start_pos = SSM (sci, SCI_GETENDSTYLED, 0, 0);
-  guint line_num = SSM (sci, SCI_LINEFROMPOSITION, start_pos, 0);
-  start_pos = SSM (sci, SCI_POSITIONFROMLINE, line_num, 0);
+  guint start_pos = cdk_sci_send (sci, SCI_GETENDSTYLED, 0, 0);
+  guint line_num = cdk_sci_send (sci, SCI_LINEFROMPOSITION, start_pos, 0);
+  start_pos = cdk_sci_send (sci, SCI_POSITIONFROMLINE, line_num, 0);
 
   cdk_highlighter_queue_highlight (self, start_pos, nt->position);
 
@@ -302,7 +300,7 @@ cdk_highlighter_highlight_all (CdkHighlighter *self)
 {
   GeanyDocument *doc = cdk_document_helper_get_document (CDK_DOCUMENT_HELPER (self));
   ScintillaObject *sci = doc->editor->sci;
-  gint length = SSM (sci, SCI_GETLENGTH, 0, 0);
+  gint length = cdk_sci_send (sci, SCI_GETLENGTH, 0, 0);
   return cdk_highlighter_highlight (self, 0, length);
 }
 
@@ -376,20 +374,20 @@ cdk_highlighter_set_style_scheme (CdkHighlighter *self, CdkStyleScheme *scheme)
           if (def_style != NULL)
             {
               // apply default style to all styles first
-              SSM (sci, SCI_STYLESETFORE, STYLE_DEFAULT, def_style->fore);
-              SSM (sci, SCI_STYLESETBACK, STYLE_DEFAULT, def_style->back);
-              SSM (sci, SCI_STYLESETBOLD, STYLE_DEFAULT, def_style->bold);
-              SSM (sci, SCI_STYLESETITALIC, STYLE_DEFAULT, def_style->italic);
+              cdk_sci_send (sci, SCI_STYLESETFORE, STYLE_DEFAULT, def_style->fore);
+              cdk_sci_send (sci, SCI_STYLESETBACK, STYLE_DEFAULT, def_style->back);
+              cdk_sci_send (sci, SCI_STYLESETBOLD, STYLE_DEFAULT, def_style->bold);
+              cdk_sci_send (sci, SCI_STYLESETITALIC, STYLE_DEFAULT, def_style->italic);
             }
           else
             {
               // sane fallback for all styles
-              SSM (sci, SCI_STYLESETFORE, STYLE_DEFAULT, 0x000000);
-              SSM (sci, SCI_STYLESETBACK, STYLE_DEFAULT, 0xffffff);
-              SSM (sci, SCI_STYLESETBOLD, STYLE_DEFAULT, FALSE);
-              SSM (sci, SCI_STYLESETITALIC, STYLE_DEFAULT, FALSE);
+              cdk_sci_send (sci, SCI_STYLESETFORE, STYLE_DEFAULT, 0x000000);
+              cdk_sci_send (sci, SCI_STYLESETBACK, STYLE_DEFAULT, 0xffffff);
+              cdk_sci_send (sci, SCI_STYLESETBOLD, STYLE_DEFAULT, FALSE);
+              cdk_sci_send (sci, SCI_STYLESETITALIC, STYLE_DEFAULT, FALSE);
             }
-          SSM (sci, SCI_STYLECLEARALL, 0, 0);
+          cdk_sci_send (sci, SCI_STYLECLEARALL, 0, 0);
 
           // set the styles used by the highlighter
           for (gint i = 0; i < CDK_NUM_STYLES; i++)
@@ -399,10 +397,10 @@ cdk_highlighter_set_style_scheme (CdkHighlighter *self, CdkStyleScheme *scheme)
               if (style == NULL)
                 continue;
 
-              SSM (sci, SCI_STYLESETFORE, i, style->fore);
-              SSM (sci, SCI_STYLESETBACK, i, style->back);
-              SSM (sci, SCI_STYLESETBOLD, i, style->bold);
-              SSM (sci, SCI_STYLESETITALIC, i, style->italic);
+              cdk_sci_send (sci, SCI_STYLESETFORE, i, style->fore);
+              cdk_sci_send (sci, SCI_STYLESETBACK, i, style->back);
+              cdk_sci_send (sci, SCI_STYLESETBOLD, i, style->bold);
+              cdk_sci_send (sci, SCI_STYLESETITALIC, i, style->italic);
             }
 
           cdk_highlighter_highlight_all (self);

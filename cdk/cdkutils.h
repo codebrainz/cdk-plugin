@@ -21,6 +21,9 @@ gsize cdk_document_get_length (struct GeanyDocument *doc);
   ((CdkPlugin*) g_object_get_data (G_OBJECT (geany_data->main_widgets->window), "cdk-plugin"))
 #define cdk_plugin_is_loaded() (CDK_IS_PLUGIN (cdk_plugin_get ()))
 
+#define cdk_sci_send(sci, msg, uparam, lparam) \
+  scintilla_send_message (SCINTILLA (sci), (guint)(msg), (uptr_t)(uparam), (sptr_t)(lparam))
+
 G_END_DECLS
 
 #endif // CDK_UTILS_H
