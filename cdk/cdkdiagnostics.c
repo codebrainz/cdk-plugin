@@ -23,6 +23,7 @@ struct CdkDiagnosticsPrivate_
 {
   gboolean indicators_enabled;
   gboolean markers_enabled;
+  gboolean compiler_messages_enabled;
   CdkStyleScheme *scheme;
   sptr_t prev_w_indic_style;
   sptr_t prev_w_indic_fore;
@@ -30,6 +31,7 @@ struct CdkDiagnosticsPrivate_
   sptr_t prev_e_indic_fore;
   gulong sci_notify_hnd;
   gboolean annot_on;
+  gchar *msgdir;
 };
 
 struct CdkDiagnosticsRangeData
@@ -45,6 +47,7 @@ enum
   PROP_SCHEME,
   PROP_INDICATORS_ENABLED,
   PROP_MARKERS_ENABLED,
+  PROP_COMPILER_MESSAGES_ENABLED,
   NUM_PROPERTIES,
 };
 
@@ -58,6 +61,7 @@ static void cdk_diagnostics_deinitialize_document (CdkDiagnostics *self, GeanyDo
 static void cdk_diagnostics_updated (CdkDocumentHelper *object, GeanyDocument *document);
 static void cdk_diagnostics_clear_indicators (CdkDiagnostics *self, GeanyDocument *document);
 static void cdk_diagnostics_clear_markers (CdkDiagnostics *self, GeanyDocument *document);
+static void cdk_diagnostics_clear_compiler_messages (CdkDiagnostics *self);
 
 G_DEFINE_TYPE (CdkDiagnostics, cdk_diagnostics, CDK_TYPE_DOCUMENT_HELPER)
 
@@ -108,6 +112,13 @@ cdk_diagnostics_class_init (CdkDiagnosticsClass *klass)
                           TRUE,
                           G_PARAM_CONSTRUCT | G_PARAM_READWRITE);
 
+  cdk_diagnostics_properties[PROP_COMPILER_MESSAGES_ENABLED] =
+    g_param_spec_boolean ("compiler-messages-enabled",
+                          "CompilerMessagesEnabled",
+                          "Whether to show diagnostics in the compiler tab",
+                          TRUE,
+                          G_PARAM_CONSTRUCT | G_PARAM_READWRITE);
+
   g_object_class_install_properties (g_object_class,
                                      NUM_PROPERTIES,
                                      cdk_diagnostics_properties);
@@ -136,6 +147,7 @@ cdk_diagnostics_init (CdkDiagnostics *self)
   self->priv = G_TYPE_INSTANCE_GET_PRIVATE (self, CDK_TYPE_DIAGNOSTICS, CdkDiagnosticsPrivate);
   self->priv->indicators_enabled = TRUE;
   self->priv->markers_enabled = TRUE;
+  self->priv->compiler_messages_enabled = TRUE;
 }
 
 static void
@@ -156,6 +168,9 @@ cdk_diagnostics_get_property (GObject *object,
       break;
     case PROP_MARKERS_ENABLED:
       g_value_set_boolean (value, cdk_diagnostics_get_markers_enabled (self));
+      break;
+    case PROP_COMPILER_MESSAGES_ENABLED:
+      g_value_set_boolean (value, cdk_diagnostics_get_compiler_messages_enabled (self));
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -180,6 +195,9 @@ cdk_diagnostics_set_property (GObject *object,
       break;
     case PROP_MARKERS_ENABLED:
       cdk_diagnostics_set_markers_enabled (self, g_value_get_boolean (value));
+      break;
+    case PROP_COMPILER_MESSAGES_ENABLED:
+      cdk_diagnostics_set_compiler_messages_enabled (self, g_value_get_boolean (value));
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -293,6 +311,35 @@ cdk_diagnostics_set_markers_enabled (CdkDiagnostics *self,
       GeanyDocument *doc = cdk_document_helper_get_document (helper);
 
       self->priv->markers_enabled = enabled;
+
+      if (enabled)
+        cdk_diagnostics_updated (helper, doc);
+      else
+        cdk_diagnostics_clear_markers (self, doc);
+
+      g_object_notify (G_OBJECT (self), "markers-enabled");
+    }
+}
+
+gboolean
+cdk_diagnostics_get_compiler_messages_enabled (CdkDiagnostics *self)
+{
+  g_return_val_if_fail (CDK_IS_DIAGNOSTICS (self), FALSE);
+  return self->priv->compiler_messages_enabled;
+}
+
+void
+cdk_diagnostics_set_compiler_messages_enabled (CdkDiagnostics *self,
+                                               gboolean enabled)
+{
+  g_return_if_fail (CDK_IS_DIAGNOSTICS (self));
+
+  if (enabled != self->priv->compiler_messages_enabled)
+    {
+      CdkDocumentHelper *helper = CDK_DOCUMENT_HELPER (self);
+      GeanyDocument *doc = cdk_document_helper_get_document (helper);
+
+      self->priv->compiler_messages_enabled = enabled;
 
       if (enabled)
         cdk_diagnostics_updated (helper, doc);
@@ -461,6 +508,73 @@ cdk_diagnostics_clear_markers (CdkDiagnostics *self,
   ScintillaObject *sci = document->editor->sci;
   cdk_sci_send (sci, SCI_MARKERDELETEALL, CDK_DIAGNOSTICS_MARKER_WARNING, 0);
   cdk_sci_send (sci, SCI_MARKERDELETEALL, CDK_DIAGNOSTICS_MARKER_ERROR, 0);
+}
+
+static void
+cdk_diagnostics_clear_compiler_messages (CdkDiagnostics *self)
+{
+  msgwin_clear_tab (MSG_COMPILER);
+}
+
+static void
+cdk_diagnostics_set_compiler_message (CdkDiagnostics *self,
+                                      CXDiagnostic diag)
+{
+  CdkDocumentHelper *helper = CDK_DOCUMENT_HELPER (self);
+  CdkPlugin *plugin = cdk_document_helper_get_plugin (helper);
+  GeanyDocument *document = cdk_document_helper_get_document (helper);
+  CXTranslationUnit tu = cdk_plugin_get_translation_unit (plugin, document);
+  CXString text = clang_getDiagnosticSpelling (diag);
+  CXString option = clang_getDiagnosticOption (diag, NULL);
+  CXSourceLocation locn = clang_getDiagnosticLocation (diag);
+  guint line = 0, column = 0;
+  clang_getSpellingLocation (locn, NULL, &line, &column, NULL);
+
+  // FIXME: In order to get Geany compiler tab working with mouse-click
+  // we have to fake it out by putting Make-like entering/leaving directory
+  // messages so Geany can find the file (it doesn't support absolute
+  // paths, and msgwin_set_messages_dir() doesn't work).
+  gchar *dir = g_path_get_dirname (document->real_path);
+  msgwin_compiler_add (COLOR_BLACK, "make[1]: Entering directory `%s'", dir);
+
+  gchar *docname = g_path_get_basename (document->real_path);
+
+  if (strlen (clang_getCString (option)) == 0)
+    {
+      msgwin_compiler_add (COLOR_RED,
+                           "%s:%u:%u: %s",
+                           docname,
+                           line, column,
+                           clang_getCString (text));
+    }
+  else
+    {
+      msgwin_compiler_add (COLOR_RED,
+                           "%s:%u:%u: %s [%s]",
+                           docname,
+                           line, column,
+                           clang_getCString (text),
+                           clang_getCString (option));
+    }
+
+  msgwin_compiler_add (COLOR_BLACK, "make[1]: Leaving directory `%s'", dir);
+
+  g_free (dir);
+  g_free (docname);
+
+  clang_disposeString (text);
+  clang_disposeString (option);
+
+}
+
+static gboolean
+cdk_diagnostics_apply_each_compiler_message (CdkDiagnostics *self,
+                                             CXDiagnostic diag,
+                                             guint position,
+                                             gpointer user_data)
+{
+  cdk_diagnostics_set_compiler_message (self, diag);
+  return TRUE;
 }
 
 static gint
@@ -675,5 +789,11 @@ cdk_diagnostics_updated (CdkDocumentHelper *object,
       cdk_diagnostics_clear_markers (self, document);
       cdk_diagnostics_clear_annotations (self, document);
       cdk_diagnostics_foreach (self, cdk_diagnostics_apply_each_marker, document);
+    }
+
+  if (self->priv->compiler_messages_enabled)
+    {
+      cdk_diagnostics_clear_compiler_messages (self);
+      cdk_diagnostics_foreach (self, cdk_diagnostics_apply_each_compiler_message, NULL);
     }
 }

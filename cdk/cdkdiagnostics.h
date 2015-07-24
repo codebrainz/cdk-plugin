@@ -41,6 +41,8 @@ gboolean cdk_diagnostics_get_indicators_enabled (CdkDiagnostics *self);
 void cdk_diagnostics_set_indicators_enabled (CdkDiagnostics *self, gboolean enabled);
 gboolean cdk_diagnostics_get_markers_enabled (CdkDiagnostics *self);
 void cdk_diagnostics_set_markers_enabled (CdkDiagnostics *self, gboolean enabled);
+gboolean cdk_diagnostics_get_compiler_messages_enabled (CdkDiagnostics *self);
+void cdk_diagnostics_set_compiler_messages_enabled (CdkDiagnostics *self, gboolean enabled);
 
 typedef gboolean (*CdkDiagnosticFunc) (CdkDiagnostics *diag,
                                        gpointer cx_diag,
