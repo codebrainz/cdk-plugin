@@ -39,6 +39,8 @@ CdkStyleScheme *cdk_diagnostics_get_style_scheme (CdkDiagnostics *self);
 void cdk_diagnostics_set_style_scheme (CdkDiagnostics *self, CdkStyleScheme *scheme);
 gboolean cdk_diagnostics_get_indicators_enabled (CdkDiagnostics *self);
 void cdk_diagnostics_set_indicators_enabled (CdkDiagnostics *self, gboolean enabled);
+gboolean cdk_diagnostics_get_markers_enabled (CdkDiagnostics *self);
+void cdk_diagnostics_set_markers_enabled (CdkDiagnostics *self, gboolean enabled);
 
 G_END_DECLS
 

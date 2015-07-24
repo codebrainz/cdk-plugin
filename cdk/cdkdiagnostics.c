@@ -10,12 +10,18 @@
 #include <clang-c/Index.h>
 #include <ctype.h>
 
+#include "error.xpm"
+#include "warning.xpm"
+
 #define CDK_DIAGNOSTICS_INDIC_WARNING INDIC_CONTAINER
 #define CDK_DIAGNOSTICS_INDIC_ERROR   INDIC_CONTAINER+1
+#define CDK_DIAGNOSTICS_MARKER_WARNING 23
+#define CDK_DIAGNOSTICS_MARKER_ERROR   24
 
 struct CdkDiagnosticsPrivate_
 {
   gboolean indicators_enabled;
+  gboolean markers_enabled;
   CdkStyleScheme *scheme;
   sptr_t prev_w_indic_style;
   sptr_t prev_w_indic_fore;
@@ -28,6 +34,7 @@ enum
   PROP_0,
   PROP_SCHEME,
   PROP_INDICATORS_ENABLED,
+  PROP_MARKERS_ENABLED,
   NUM_PROPERTIES,
 };
 
@@ -40,6 +47,7 @@ static void cdk_diagnostics_initialize_document (CdkDocumentHelper *object, Gean
 static void cdk_diagnostics_deinitialize_document (CdkDiagnostics *self, GeanyDocument *document);
 static void cdk_diagnostics_updated (CdkDocumentHelper *object, GeanyDocument *document);
 static void cdk_diagnostics_clear_indicators (CdkDiagnostics *self, GeanyDocument *document);
+static void cdk_diagnostics_clear_markers (CdkDiagnostics *self, GeanyDocument *document);
 
 G_DEFINE_TYPE (CdkDiagnostics, cdk_diagnostics, CDK_TYPE_DOCUMENT_HELPER)
 
@@ -83,6 +91,13 @@ cdk_diagnostics_class_init (CdkDiagnosticsClass *klass)
                           TRUE,
                           G_PARAM_CONSTRUCT | G_PARAM_READWRITE);
 
+  cdk_diagnostics_properties[PROP_MARKERS_ENABLED] =
+    g_param_spec_boolean ("markers-enabled",
+                          "MarkersEnabled",
+                          "Whether to draw icons in the editor margin",
+                          TRUE,
+                          G_PARAM_CONSTRUCT | G_PARAM_READWRITE);
+
   g_object_class_install_properties (g_object_class,
                                      NUM_PROPERTIES,
                                      cdk_diagnostics_properties);
@@ -110,6 +125,7 @@ cdk_diagnostics_init (CdkDiagnostics *self)
 {
   self->priv = G_TYPE_INSTANCE_GET_PRIVATE (self, CDK_TYPE_DIAGNOSTICS, CdkDiagnosticsPrivate);
   self->priv->indicators_enabled = TRUE;
+  self->priv->markers_enabled = TRUE;
 }
 
 static void
@@ -127,6 +143,9 @@ cdk_diagnostics_get_property (GObject *object,
       break;
     case PROP_INDICATORS_ENABLED:
       g_value_set_boolean (value, cdk_diagnostics_get_indicators_enabled (self));
+      break;
+    case PROP_MARKERS_ENABLED:
+      g_value_set_boolean (value, cdk_diagnostics_get_markers_enabled (self));
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -148,6 +167,9 @@ cdk_diagnostics_set_property (GObject *object,
       break;
     case PROP_INDICATORS_ENABLED:
       cdk_diagnostics_set_indicators_enabled (self, g_value_get_boolean (value));
+      break;
+    case PROP_MARKERS_ENABLED:
+      cdk_diagnostics_set_markers_enabled (self, g_value_get_boolean (value));
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -236,6 +258,36 @@ cdk_diagnostics_set_indicators_enabled (CdkDiagnostics *self, gboolean enabled)
     }
 }
 
+gboolean
+cdk_diagnostics_get_markers_enabled (CdkDiagnostics *self)
+{
+  g_return_val_if_fail (CDK_IS_DIAGNOSTICS (self), FALSE);
+  return self->priv->markers_enabled;
+}
+
+void
+cdk_diagnostics_set_markers_enabled (CdkDiagnostics *self,
+                                     gboolean enabled)
+{
+  g_return_if_fail (CDK_IS_DIAGNOSTICS (self));
+
+  if (enabled != self->priv->markers_enabled)
+    {
+      CdkDocumentHelper *helper = CDK_DOCUMENT_HELPER (self);
+      GeanyDocument *doc = cdk_document_helper_get_document (helper);
+
+      self->priv->markers_enabled = enabled;
+
+      if (enabled)
+        cdk_diagnostics_updated (helper, doc);
+      else
+        cdk_diagnostics_clear_markers (self, doc);
+
+      g_object_notify (G_OBJECT (self), "markers-enabled");
+    }
+}
+
+
 static void
 cdk_diagnostics_initialize_document (CdkDocumentHelper *object,
                                      GeanyDocument *document)
@@ -247,6 +299,9 @@ cdk_diagnostics_initialize_document (CdkDocumentHelper *object,
   self->priv->prev_w_indic_fore = cdk_sci_send (sci, SCI_INDICGETFORE, CDK_DIAGNOSTICS_INDIC_WARNING, 0);
   self->priv->prev_e_indic_style = cdk_sci_send (sci, SCI_INDICGETSTYLE, CDK_DIAGNOSTICS_INDIC_ERROR, 0);
   self->priv->prev_e_indic_fore = cdk_sci_send (sci, SCI_INDICGETFORE, CDK_DIAGNOSTICS_INDIC_ERROR, 0);
+
+  cdk_sci_send (sci, SCI_MARKERDEFINEPIXMAP, CDK_DIAGNOSTICS_MARKER_WARNING, warning_xpm);
+  cdk_sci_send (sci, SCI_MARKERDEFINEPIXMAP, CDK_DIAGNOSTICS_MARKER_ERROR, error_xpm);
 }
 
 static void
@@ -280,6 +335,34 @@ cdk_diagnostics_clear_indicators (CdkDiagnostics *self,
 }
 
 static void
+cdk_diagnostics_clear_markers (CdkDiagnostics *self,
+                               GeanyDocument *document)
+{
+  ScintillaObject *sci = document->editor->sci;
+  cdk_sci_send (sci, SCI_MARKERDELETEALL, CDK_DIAGNOSTICS_MARKER_WARNING, 0);
+  cdk_sci_send (sci, SCI_MARKERDELETEALL, CDK_DIAGNOSTICS_MARKER_ERROR, 0);
+}
+
+static gint
+cdk_diagnostics_set_marker (CdkDiagnostics *self,
+                            GeanyDocument *document,
+                            gint line,
+                            gint marker)
+{
+  ScintillaObject *sci = document->editor->sci;
+  if (! self->priv->markers_enabled || line <= 0)
+    return -1;
+  line--; // libclang uses 1-based line, scintilla 0-based
+  sptr_t marker_handle = cdk_sci_send (sci, SCI_MARKERADD, line, marker);
+  if (marker_handle == -1)
+    {
+      g_warning ("failed to add marker '%d' to line '%d'", line, marker);
+      return -1;
+    }
+  return marker_handle;
+}
+
+static void
 cdk_diagnostics_trim_range (ScintillaObject *sci,
                             gint *start_ptr,
                             gint *end_ptr)
@@ -303,6 +386,8 @@ cdk_diagnostics_set_indicator (CdkDiagnostics *self,
                                gint end)
 {
   ScintillaObject *sci = document->editor->sci;
+  if (! self->priv->indicators_enabled)
+    return;
   cdk_diagnostics_trim_range (sci, &start, &end);
   cdk_sci_send (sci, SCI_SETINDICATORCURRENT, indic, 0);
   cdk_sci_send (sci, SCI_INDICATORFILLRANGE, start, (end - start) + 1);
@@ -315,10 +400,14 @@ cdk_diagnostics_updated (CdkDocumentHelper *object,
   CdkDiagnostics *self = CDK_DIAGNOSTICS (object);
   ScintillaObject *sci = document->editor->sci;
 
-  if (! self->priv->indicators_enabled)
-    return;
+  if (! self->priv->indicators_enabled &&
+      ! self->priv->markers_enabled)
+    {
+      return;
+    }
 
   cdk_diagnostics_clear_indicators (self, document);
+  cdk_diagnostics_clear_markers (self, document);
 
   CdkPlugin *plugin = cdk_document_helper_get_plugin (object);
   CXTranslationUnit tu = cdk_plugin_get_translation_unit (plugin, document);
@@ -331,14 +420,17 @@ cdk_diagnostics_updated (CdkDocumentHelper *object,
       CXDiagnostic diag = clang_getDiagnostic (tu, i);
       enum CXDiagnosticSeverity severity = clang_getDiagnosticSeverity (diag);
       gint indic = 0;
+      gint marker = 0;
       switch (severity)
         {
           case CXDiagnostic_Warning:
             indic = CDK_DIAGNOSTICS_INDIC_WARNING;
+            marker = CDK_DIAGNOSTICS_MARKER_WARNING;
             break;
           case CXDiagnostic_Error:
           case CXDiagnostic_Fatal:
             indic = CDK_DIAGNOSTICS_INDIC_ERROR;
+            marker = CDK_DIAGNOSTICS_MARKER_ERROR;
             break;
           default:
             continue;
@@ -349,11 +441,13 @@ cdk_diagnostics_updated (CdkDocumentHelper *object,
         {
           CXSourceLocation locn = clang_getDiagnosticLocation (diag);
           guint offset = 0;
-          clang_getSpellingLocation (locn, NULL, NULL, NULL, &offset);
+          guint line = 0;
+          clang_getSpellingLocation (locn, NULL, &line, NULL, &offset);
           gint word_start = cdk_sci_send (sci, SCI_WORDSTARTPOSITION, offset, FALSE);
           gint word_end = cdk_sci_send (sci, SCI_WORDENDPOSITION, offset, FALSE);
           cdk_diagnostics_set_indicator (self, document, indic,
                                          word_start, word_end);
+          cdk_diagnostics_set_marker (self, document, line, marker);
         }
 
       for (guint j = 0; j < n_ranges; j++)
@@ -362,10 +456,12 @@ cdk_diagnostics_updated (CdkDocumentHelper *object,
           CXSourceLocation start_locn = clang_getRangeStart (range);
           CXSourceLocation end_locn = clang_getRangeEnd (range);
           guint start_offset = 0, end_offset = 0;
-          clang_getSpellingLocation (start_locn, NULL, NULL, NULL, &start_offset);
+          guint line = 0;
+          clang_getSpellingLocation (start_locn, NULL, &line, NULL, &start_offset);
           clang_getSpellingLocation (end_locn, NULL, NULL, NULL, &end_offset);
           cdk_diagnostics_set_indicator (self, document, indic,
                                          start_offset, end_offset);
+          cdk_diagnostics_set_marker (self, document, line, marker);
         }
     }
 }
