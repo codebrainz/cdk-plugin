@@ -508,6 +508,11 @@ cdk_diagnostics_set_indicator (CdkDiagnostics *self,
   ScintillaObject *sci = document->editor->sci;
   if (! self->priv->indicators_enabled)
     return;
+  if (start == end)
+    {
+      start = cdk_sci_send (sci, SCI_WORDSTARTPOSITION, start, TRUE);
+      end = cdk_sci_send (sci, SCI_WORDENDPOSITION, start, TRUE);
+    }
   cdk_diagnostics_trim_range (sci, &start, &end);
   cdk_sci_send (sci, SCI_SETINDICATORCURRENT, indic, 0);
   cdk_sci_send (sci, SCI_INDICATORFILLRANGE, start, (end - start) + 1);
