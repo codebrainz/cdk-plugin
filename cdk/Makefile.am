@@ -52,4 +52,4 @@ pkgconfig_DATA = cdk.pc
 styleschemedir = $(pkgdatadir)/style-schemes
 stylescheme_DATA = default.xml
 
-EXTRA_DIST = cdk.pc.in
+EXTRA_DIST = cdk.pc.in cdkmarkererror.c cdkmarkerwarning.c

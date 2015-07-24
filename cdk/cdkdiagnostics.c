@@ -10,8 +10,9 @@
 #include <clang-c/Index.h>
 #include <ctype.h>
 
-#include "error.xpm"
-#include "warning.xpm"
+// RGBA icons in C source
+#include <cdk/cdkmarkererror.c>
+#include <cdk/cdkmarkerwarning.c>
 
 #define CDK_DIAGNOSTICS_INDIC_WARNING INDIC_CONTAINER
 #define CDK_DIAGNOSTICS_INDIC_ERROR   INDIC_CONTAINER+1
@@ -405,8 +406,13 @@ cdk_diagnostics_initialize_document (CdkDocumentHelper *object,
   self->priv->prev_e_indic_style = cdk_sci_send (sci, SCI_INDICGETSTYLE, CDK_DIAGNOSTICS_INDIC_ERROR, 0);
   self->priv->prev_e_indic_fore = cdk_sci_send (sci, SCI_INDICGETFORE, CDK_DIAGNOSTICS_INDIC_ERROR, 0);
 
-  cdk_sci_send (sci, SCI_MARKERDEFINEPIXMAP, CDK_DIAGNOSTICS_MARKER_WARNING, warning_xpm);
-  cdk_sci_send (sci, SCI_MARKERDEFINEPIXMAP, CDK_DIAGNOSTICS_MARKER_ERROR, error_xpm);
+  cdk_sci_send (sci, SCI_RGBAIMAGESETWIDTH, cdk_marker_warning.width, 0);
+  cdk_sci_send (sci, SCI_RGBAIMAGESETHEIGHT, cdk_marker_warning.height, 0);
+  cdk_sci_send (sci, SCI_MARKERDEFINERGBAIMAGE, CDK_DIAGNOSTICS_MARKER_WARNING, cdk_marker_warning.pixel_data);
+
+  cdk_sci_send (sci, SCI_RGBAIMAGESETWIDTH, cdk_marker_error.width, 0);
+  cdk_sci_send (sci, SCI_RGBAIMAGESETHEIGHT, cdk_marker_error.height, 0);
+  cdk_sci_send (sci, SCI_MARKERDEFINERGBAIMAGE, CDK_DIAGNOSTICS_MARKER_ERROR, cdk_marker_error.pixel_data);
 
   self->priv->sci_notify_hnd =
     g_signal_connect_swapped (sci, "sci-notify", G_CALLBACK (cdk_diagnostics_sci_notify), self);

@@ -34,6 +34,8 @@ cdk_scintilla_set_style (struct _ScintillaObject *sci, guint id, const struct Cd
   cdk_sci_send (sci, SCI_STYLESETFORE, id, style->fore);
   cdk_sci_send (sci, SCI_STYLESETBOLD, id, style->bold);
   cdk_sci_send (sci, SCI_STYLESETITALIC, id, style->italic);
-  cdk_sci_send (sci, SCI_STYLESETFONT, id, style->font);
-  cdk_sci_send (sci, SCI_STYLESETSIZE, id, style->size);
+  if (style->font != NULL)
+    cdk_sci_send (sci, SCI_STYLESETFONT, id, style->font);
+  if (style->size > 0)
+    cdk_sci_send (sci, SCI_STYLESETSIZE, id, style->size);
 }

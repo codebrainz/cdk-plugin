@@ -13,8 +13,8 @@
   <style name="string"             fore="#C7611C" back="#FFFEEB" />
   <style name="type_name"          fore="#671179" back="#FFFEEB" />
   <style name="function_call"      fore="#000000" back="#FFFEEB" />
-  <style name="diagnostic_error"   fore="#E42F2F" />
-  <style name="diagnostic_warning" fore="#1E7C13" />
-  <style name="annotation_error"   fore="#FFEAEA" back="#E42F2F" />
-  <style name="annotation_warning" fore="#F4ECDF" back="#F9AB33" />
+  <style name="diagnostic_error"   fore="#D30A88" />
+  <style name="diagnostic_warning" fore="#FFA500" />
+  <style name="annotation_error"   fore="#FEEBF7" back="#D30A88" />
+  <style name="annotation_warning" fore="#FFF9ED" back="#FFA500" />
 </scheme>
