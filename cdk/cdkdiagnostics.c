@@ -795,5 +795,9 @@ cdk_diagnostics_updated (CdkDocumentHelper *object,
     {
       cdk_diagnostics_clear_compiler_messages (self);
       cdk_diagnostics_foreach (self, cdk_diagnostics_apply_each_compiler_message, NULL);
+      // FIXME: need to clear Geany's indicators since it draws them over
+      // ours when user clicks on message in Compiler tab. This only clears
+      // them after the document is updated again
+      editor_indicator_clear (document->editor, GEANY_INDICATOR_ERROR);
     }
 }
