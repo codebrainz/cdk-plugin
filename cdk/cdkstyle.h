@@ -41,6 +41,8 @@ typedef struct CdkStyle
   guint32  back;
   gboolean bold;
   gboolean italic;
+  gchar   *font;
+  gint     size;
 }
 CdkStyle;
 

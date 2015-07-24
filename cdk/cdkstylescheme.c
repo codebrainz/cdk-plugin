@@ -11,6 +11,8 @@
 #include <gdk/gdk.h>
 #include <clang-c/Index.h>
 #include <string.h>
+#include <stdlib.h>
+#include <errno.h>
 
 struct CdkStyleSchemePrivate_
 {
@@ -23,6 +25,8 @@ struct CdkStyleSchemePrivate_
   guint32     back_color;
   gboolean    bold;
   gboolean    italic;
+  gchar      *font;
+  guint       size;
 };
 
 enum
@@ -309,6 +313,8 @@ on_start_element (GMarkupParseContext *context,
       self->priv->back_color = 0x00ffffff;
       self->priv->bold       = FALSE;
       self->priv->italic     = FALSE;
+      self->priv->font       = NULL;
+      self->priv->size       = -1;
 
       gchar *fore_str = lookup_attr ("fore", attr_names, attr_values);
       if (fore_str != NULL)
@@ -329,6 +335,18 @@ on_start_element (GMarkupParseContext *context,
       if (italic_str != NULL)
         self->priv->italic = (g_strcmp0 (italic_str, "true") == 0);
       g_free (italic_str);
+
+      self->priv->font = lookup_attr ("font", attr_names, attr_values);
+
+      gchar *size_str = lookup_attr ("size", attr_names, attr_values);
+      if (size_str != NULL)
+        {
+          errno = 0;
+          glong size = strtol (size_str, NULL, 10);
+          if (errno == 0)
+            self->priv->size = size;
+          g_free (size_str);
+        }
 
       //g_debug ("style(%s | %u); fore=0x%06x, back=0x%06x, bold=%d, italic=%d",
       //         style_name, (guint) self->priv->style_id, self->priv->fore_color, self->priv->back_color, self->priv->bold, self->priv->italic);
@@ -358,6 +376,8 @@ on_end_element (GMarkupParseContext *context,
       style->back = self->priv->back_color;
       style->bold = self->priv->bold;
       style->italic = self->priv->italic;
+      style->font = self->priv->font;
+      style->size = self->priv->size;
 
       g_hash_table_insert (self->priv->style_map,
                            GSIZE_TO_POINTER (self->priv->style_id),

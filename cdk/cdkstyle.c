@@ -24,26 +24,6 @@ cdk_style_get_type (void)
     return type_id;
 }
 
-#if 0
-static guint32
-cdk_parse_color (const gchar *cstr)
-{
-  if (G_UNLIKELY (! cstr))
-    return 0;
-
-  GdkRGBA rgba;
-  if (gdk_rgba_parse (&rgba, cstr))
-    {
-      guint8 r = rgba.red * 255;
-      guint8 g = rgba.green * 255;
-      guint8 b = rgba.blue * 255;
-      return (b << 16) | (g << 8) | r;
-    }
-
-  return 0;
-}
-#endif
-
 CdkStyle *
 cdk_style_new (void)
 {
@@ -55,7 +35,10 @@ void
 cdk_style_free (CdkStyle *style)
 {
   if (style != NULL)
-    g_slice_free (CdkStyle, style);
+    {
+      g_free (style->font);
+      g_slice_free (CdkStyle, style);
+    }
 }
 
 CdkStyle *
@@ -66,6 +49,8 @@ cdk_style_copy (CdkStyle *style)
     {
       new_style = g_slice_new0 (CdkStyle);
       *new_style = *style;
+      if (style->font != NULL)
+        new_style->font = g_strdup (style->font);
     }
   return new_style;
 }
