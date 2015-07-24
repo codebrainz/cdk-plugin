@@ -27,6 +27,15 @@ struct CdkDiagnosticsPrivate_
   sptr_t prev_w_indic_fore;
   sptr_t prev_e_indic_style;
   sptr_t prev_e_indic_fore;
+  gulong sci_notify_hnd;
+  gboolean annot_on;
+};
+
+struct CdkDiagnosticsRangeData
+{
+  CdkDiagnosticRangeFunc func;
+  gpointer user_data;
+  gint counter;
 };
 
 enum
@@ -224,6 +233,12 @@ cdk_diagnostics_set_style_scheme (CdkDiagnostics *self,
           style = cdk_style_scheme_get_style (self->priv->scheme, CDK_STYLE_DIAGNOSTIC_ERROR);
           if (style != NULL)
             cdk_sci_send (sci, SCI_INDICSETFORE, CDK_DIAGNOSTICS_INDIC_ERROR, style->fore);
+          style = cdk_style_scheme_get_style (self->priv->scheme, CDK_STYLE_ANNOTATION_WARNING);
+          if (style != NULL)
+            cdk_scintilla_set_style (sci, CDK_STYLE_ANNOTATION_WARNING, style);
+          style = cdk_style_scheme_get_style (self->priv->scheme, CDK_STYLE_ANNOTATION_ERROR);
+          if (style != NULL)
+            cdk_scintilla_set_style (sci, CDK_STYLE_ANNOTATION_ERROR, style);
         }
 
       g_object_notify (G_OBJECT (self), "style-scheme");
@@ -287,6 +302,96 @@ cdk_diagnostics_set_markers_enabled (CdkDiagnostics *self,
     }
 }
 
+static void
+cdk_diagnostics_annotate_line (CdkDiagnostics *self,
+                               CXDiagnostic diag,
+                               guint line,
+                               ScintillaObject *sci)
+{
+  CXString text = clang_getDiagnosticSpelling (diag);
+  CXString option = clang_getDiagnosticOption (diag, NULL);
+  gchar *message;
+  if (strlen (clang_getCString (option)) == 0)
+    message = g_strdup (clang_getCString (text));
+  else
+    message = g_strdup_printf ("%s [%s]", clang_getCString (text), clang_getCString (option));
+  clang_disposeString (text);
+  clang_disposeString (option);
+
+  cdk_sci_send (sci, SCI_ANNOTATIONSETTEXT, line - 1, message);
+  g_free (message);
+
+  gint style = CDK_STYLE_DEFAULT;
+  enum CXDiagnosticSeverity severity = clang_getDiagnosticSeverity (diag);
+  switch (severity)
+    {
+    case CXDiagnostic_Warning:
+      style = CDK_STYLE_ANNOTATION_WARNING;
+      break;
+    case CXDiagnostic_Error:
+    case CXDiagnostic_Fatal:
+      style = CDK_STYLE_ANNOTATION_ERROR;
+      break;
+    }
+
+  cdk_sci_send (sci, SCI_ANNOTATIONSETSTYLE, line - 1, style);
+  cdk_sci_send (sci, SCI_ANNOTATIONSETVISIBLE, ANNOTATION_BOXED, 0);
+}
+
+static void
+cdk_diagnostics_clear_annotations (CdkDiagnostics *self,
+                                   GeanyDocument *document)
+{
+  ScintillaObject *sci = document->editor->sci;
+  self->priv->annot_on = FALSE;
+  cdk_sci_send (sci, SCI_ANNOTATIONCLEARALL, 0, 0);
+  cdk_sci_send (sci, SCI_ANNOTATIONSETVISIBLE, ANNOTATION_HIDDEN, 0);
+}
+
+static gboolean
+cdk_diagnostics_find_clicked_line (CdkDiagnostics *self,
+                                   CXDiagnostic diag,
+                                   guint position,
+                                   gpointer user_data)
+{
+  ScintillaObject *sci = user_data;
+  guint clicked_line = cdk_sci_send (sci, SCI_LINEFROMPOSITION, position, 0) + 1;
+
+  CXSourceLocation locn = clang_getDiagnosticLocation (diag);
+  guint diag_line = 0;
+  clang_getSpellingLocation (locn, NULL, &diag_line, NULL, NULL);
+
+  if (diag_line == clicked_line)
+    {
+      cdk_diagnostics_annotate_line (self, diag, clicked_line, sci);
+      return FALSE; // found it, stop iterating
+    }
+
+  return TRUE; // keep going
+}
+
+static void
+cdk_diagnostics_sci_notify (CdkDiagnostics *self,
+                            gint unused,
+                            SCNotification *notification,
+                            ScintillaObject *sci)
+{
+  if (notification->nmhdr.code != SCN_MARGINCLICK || notification->margin != 1)
+    return;
+
+  if (self->priv->annot_on)
+    {
+      self->priv->annot_on = FALSE;
+      cdk_sci_send (sci, SCI_ANNOTATIONCLEARALL, 0, 0);
+      cdk_sci_send (sci, SCI_ANNOTATIONSETVISIBLE, ANNOTATION_HIDDEN, 0);
+    }
+  else
+    {
+      self->priv->annot_on = TRUE;
+      cdk_diagnostics_foreach (self, cdk_diagnostics_find_clicked_line, sci);
+      cdk_sci_send (sci, SCI_ANNOTATIONSETVISIBLE, ANNOTATION_BOXED, 0);
+    }
+}
 
 static void
 cdk_diagnostics_initialize_document (CdkDocumentHelper *object,
@@ -302,6 +407,9 @@ cdk_diagnostics_initialize_document (CdkDocumentHelper *object,
 
   cdk_sci_send (sci, SCI_MARKERDEFINEPIXMAP, CDK_DIAGNOSTICS_MARKER_WARNING, warning_xpm);
   cdk_sci_send (sci, SCI_MARKERDEFINEPIXMAP, CDK_DIAGNOSTICS_MARKER_ERROR, error_xpm);
+
+  self->priv->sci_notify_hnd =
+    g_signal_connect_swapped (sci, "sci-notify", G_CALLBACK (cdk_diagnostics_sci_notify), self);
 }
 
 static void
@@ -309,6 +417,12 @@ cdk_diagnostics_deinitialize_document (CdkDiagnostics *self,
                                        GeanyDocument *document)
 {
   ScintillaObject *sci = document->editor->sci;
+
+  if (self->priv->sci_notify_hnd > 0)
+    {
+      g_signal_handler_disconnect (sci, self->priv->sci_notify_hnd);
+      self->priv->sci_notify_hnd = 0;
+    }
 
   cdk_sci_send (sci, SCI_INDICSETSTYLE, CDK_DIAGNOSTICS_INDIC_WARNING, self->priv->prev_w_indic_style);
   cdk_sci_send (sci, SCI_INDICSETFORE, CDK_DIAGNOSTICS_INDIC_WARNING, self->priv->prev_w_indic_fore);
@@ -393,75 +507,162 @@ cdk_diagnostics_set_indicator (CdkDiagnostics *self,
   cdk_sci_send (sci, SCI_INDICATORFILLRANGE, start, (end - start) + 1);
 }
 
+gint
+cdk_diagnostics_foreach (CdkDiagnostics *self,
+                         CdkDiagnosticFunc func,
+                         gpointer user_data)
+{
+  g_return_val_if_fail (CDK_IS_DIAGNOSTICS (self), -1);
+  g_return_val_if_fail (func, -1);
+
+  CdkDocumentHelper *helper = CDK_DOCUMENT_HELPER (self);
+  CdkPlugin *plugin = cdk_document_helper_get_plugin (helper);
+  GeanyDocument *document = cdk_document_helper_get_document (helper);
+  CXTranslationUnit tu = cdk_plugin_get_translation_unit (plugin, document);
+  if (tu == NULL)
+    return -1;
+
+  gint cnt = 0;
+  guint n_diags = clang_getNumDiagnostics (tu);
+  if (n_diags == 0)
+    return 0;
+
+  for (guint i = 0; i < n_diags; i++)
+    {
+      cnt++;
+
+      CXDiagnostic diag = clang_getDiagnostic (tu, i);
+      CXSourceLocation locn = clang_getDiagnosticLocation (diag);
+      guint position = 0;
+      clang_getSpellingLocation (locn, NULL, NULL, NULL, &position);
+
+      if (! func (self, diag, position, user_data))
+        break;
+    }
+
+  return cnt;
+}
+
+static gboolean
+cdk_diagnostics_range_iter (CdkDiagnostics *self,
+                            gpointer diag,
+                            guint position,
+                            gpointer user_data)
+{
+  struct CdkDiagnosticsRangeData *data = user_data;
+  gint *cnt_ptr = user_data;
+
+  guint n_ranges = clang_getDiagnosticNumRanges (diag);
+  for (guint i = 0; i < n_ranges; i++)
+    {
+      data->counter++;
+
+      CXSourceRange range = clang_getDiagnosticRange (diag, i);
+      CXSourceLocation start_locn = clang_getRangeStart (range);
+      CXSourceLocation end_locn = clang_getRangeEnd (range);
+      guint start_pos = 0, end_pos = 0;
+      clang_getSpellingLocation (start_locn, NULL, NULL, NULL, &start_pos);
+      clang_getSpellingLocation (end_locn, NULL, NULL, NULL, &end_pos);
+
+      if (! data->func (self, diag, i, start_pos, end_pos, data->user_data))
+        break;
+    }
+
+  return TRUE;
+}
+
+gint
+cdk_diagnostics_foreach_range (CdkDiagnostics *self,
+                               CdkDiagnosticRangeFunc func,
+                               gpointer user_data)
+{
+  g_return_val_if_fail (CDK_IS_DIAGNOSTICS (self), -1);
+  g_return_val_if_fail (func, -1);
+
+  struct CdkDiagnosticsRangeData data;
+  data.func = func;
+  data.user_data = user_data;
+  data.counter = 0;
+
+  cdk_diagnostics_foreach (self, cdk_diagnostics_range_iter, &data);
+
+  return data.counter;
+}
+
+static gboolean
+cdk_diagnostics_apply_each_indicator (CdkDiagnostics *self,
+                                      CXDiagnostic diag,
+                                      guint index,
+                                      guint start,
+                                      guint end,
+                                      gpointer document)
+{
+  enum CXDiagnosticSeverity severity = clang_getDiagnosticSeverity (diag);
+  gint indic = 0;
+
+  switch (severity)
+    {
+    case CXDiagnostic_Warning:
+      indic = CDK_DIAGNOSTICS_INDIC_WARNING;
+      break;
+    case CXDiagnostic_Error:
+    case CXDiagnostic_Fatal:
+      indic = CDK_DIAGNOSTICS_INDIC_ERROR;
+      break;
+    default:
+      return TRUE;
+    }
+
+  cdk_diagnostics_set_indicator (self, document, indic, start, end);
+
+  return TRUE;
+}
+
+static gboolean
+cdk_diagnostics_apply_each_marker (CdkDiagnostics *self,
+                                   CXDiagnostic diag,
+                                   guint position,
+                                   gpointer document)
+{
+  enum CXDiagnosticSeverity severity = clang_getDiagnosticSeverity (diag);
+  gint marker = 0;
+
+  switch (severity)
+    {
+    case CXDiagnostic_Warning:
+      marker = CDK_DIAGNOSTICS_MARKER_WARNING;
+      break;
+    case CXDiagnostic_Error:
+    case CXDiagnostic_Fatal:
+      marker = CDK_DIAGNOSTICS_MARKER_ERROR;
+      break;
+    default:
+      return TRUE;
+    }
+
+  GeanyDocument *doc = document;
+  gint line = cdk_sci_send (doc->editor->sci, SCI_LINEFROMPOSITION, position, 0);
+  cdk_diagnostics_set_marker (self, doc, line + 1, marker);
+
+  return TRUE;
+}
+
 static void
 cdk_diagnostics_updated (CdkDocumentHelper *object,
                          GeanyDocument *document)
 {
   CdkDiagnostics *self = CDK_DIAGNOSTICS (object);
-  ScintillaObject *sci = document->editor->sci;
 
-  if (! self->priv->indicators_enabled &&
-      ! self->priv->markers_enabled)
+  if (self->priv->indicators_enabled)
     {
-      return;
+      cdk_diagnostics_clear_indicators (self, document);
+      cdk_diagnostics_foreach_range (self, cdk_diagnostics_apply_each_indicator, document);
     }
 
-  cdk_diagnostics_clear_indicators (self, document);
-  cdk_diagnostics_clear_markers (self, document);
-
-  CdkPlugin *plugin = cdk_document_helper_get_plugin (object);
-  CXTranslationUnit tu = cdk_plugin_get_translation_unit (plugin, document);
-  if (tu == NULL)
-    return;
-
-  guint n_diag = clang_getNumDiagnostics (tu);
-  for (guint i = 0; i < n_diag; i++)
+  if (self->priv->markers_enabled)
     {
-      CXDiagnostic diag = clang_getDiagnostic (tu, i);
-      enum CXDiagnosticSeverity severity = clang_getDiagnosticSeverity (diag);
-      gint indic = 0;
-      gint marker = 0;
-      switch (severity)
-        {
-          case CXDiagnostic_Warning:
-            indic = CDK_DIAGNOSTICS_INDIC_WARNING;
-            marker = CDK_DIAGNOSTICS_MARKER_WARNING;
-            break;
-          case CXDiagnostic_Error:
-          case CXDiagnostic_Fatal:
-            indic = CDK_DIAGNOSTICS_INDIC_ERROR;
-            marker = CDK_DIAGNOSTICS_MARKER_ERROR;
-            break;
-          default:
-            continue;
-        }
-      guint n_ranges = clang_getDiagnosticNumRanges (diag);
-
-      if (n_ranges == 0)
-        {
-          CXSourceLocation locn = clang_getDiagnosticLocation (diag);
-          guint offset = 0;
-          guint line = 0;
-          clang_getSpellingLocation (locn, NULL, &line, NULL, &offset);
-          gint word_start = cdk_sci_send (sci, SCI_WORDSTARTPOSITION, offset, FALSE);
-          gint word_end = cdk_sci_send (sci, SCI_WORDENDPOSITION, offset, FALSE);
-          cdk_diagnostics_set_indicator (self, document, indic,
-                                         word_start, word_end);
-          cdk_diagnostics_set_marker (self, document, line, marker);
-        }
-
-      for (guint j = 0; j < n_ranges; j++)
-        {
-          CXSourceRange range = clang_getDiagnosticRange (diag, j);
-          CXSourceLocation start_locn = clang_getRangeStart (range);
-          CXSourceLocation end_locn = clang_getRangeEnd (range);
-          guint start_offset = 0, end_offset = 0;
-          guint line = 0;
-          clang_getSpellingLocation (start_locn, NULL, &line, NULL, &start_offset);
-          clang_getSpellingLocation (end_locn, NULL, NULL, NULL, &end_offset);
-          cdk_diagnostics_set_indicator (self, document, indic,
-                                         start_offset, end_offset);
-          cdk_diagnostics_set_marker (self, document, line, marker);
-        }
+      cdk_diagnostics_clear_markers (self, document);
+      cdk_diagnostics_clear_annotations (self, document);
+      cdk_diagnostics_foreach (self, cdk_diagnostics_apply_each_marker, document);
     }
 }

@@ -9,6 +9,8 @@
 #include <glib.h>
 
 struct GeanyDocument;
+struct _ScintillaObject;
+struct CdkStyle;
 struct GeanyData;
 extern struct GeanyData *geany_data;
 
@@ -16,6 +18,8 @@ G_BEGIN_DECLS
 
 const gchar *cdk_document_get_contents (struct GeanyDocument *doc);
 gsize cdk_document_get_length (struct GeanyDocument *doc);
+
+void cdk_scintilla_set_style (struct _ScintillaObject *sci, guint id, const struct CdkStyle *style);
 
 #define cdk_plugin_get() \
   ((CdkPlugin*) g_object_get_data (G_OBJECT (geany_data->main_widgets->window), "cdk-plugin"))

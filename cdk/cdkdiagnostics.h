@@ -42,6 +42,21 @@ void cdk_diagnostics_set_indicators_enabled (CdkDiagnostics *self, gboolean enab
 gboolean cdk_diagnostics_get_markers_enabled (CdkDiagnostics *self);
 void cdk_diagnostics_set_markers_enabled (CdkDiagnostics *self, gboolean enabled);
 
+typedef gboolean (*CdkDiagnosticFunc) (CdkDiagnostics *diag,
+                                       gpointer cx_diag,
+                                       guint position,
+                                       gpointer user_data);
+
+typedef gboolean (*CdkDiagnosticRangeFunc) (CdkDiagnostics *diag,
+                                            gpointer cx_diag,
+                                            guint index,
+                                            guint start,
+                                            guint end,
+                                            gpointer user_data);
+
+gint cdk_diagnostics_foreach (CdkDiagnostics *self, CdkDiagnosticFunc func, gpointer user_data);
+gint cdk_diagnostics_foreach_range (CdkDiagnostics *self,  CdkDiagnosticRangeFunc func, gpointer user_data);
+
 G_END_DECLS
 
 #endif /* CDK_DIAGNOSTICS_H_ */

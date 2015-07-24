@@ -29,11 +29,13 @@ typedef enum
   CDK_STYLE_CHARACTER,
   CDK_STYLE_DIAGNOSTIC_WARNING,
   CDK_STYLE_DIAGNOSTIC_ERROR,
+  CDK_STYLE_ANNOTATION_WARNING,
+  CDK_STYLE_ANNOTATION_ERROR,
   CDK_NUM_STYLES,
 }
 CdkStyleID;
 
-typedef struct
+typedef struct CdkStyle
 {
   guint32  fore;
   guint32  back;

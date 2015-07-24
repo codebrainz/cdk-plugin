@@ -456,6 +456,8 @@ cdk_style_schemes_init (void)
   add_map ("character", CDK_STYLE_CHARACTER);
   add_map ("diagnostic_warning", CDK_STYLE_DIAGNOSTIC_WARNING);
   add_map ("diagnostic_error", CDK_STYLE_DIAGNOSTIC_ERROR);
+  add_map ("annotation_warning", CDK_STYLE_ANNOTATION_WARNING);
+  add_map ("annotation_error", CDK_STYLE_ANNOTATION_ERROR);
 
   // Map libclang CXTokenKinds to CdkStyleIDs
   add_token (CXToken_Punctuation, CDK_STYLE_PUNCTUATION);
@@ -511,6 +513,8 @@ cdk_style_id_is_for_syntax (CdkStyleID id)
     {
     case CDK_STYLE_DIAGNOSTIC_ERROR:
     case CDK_STYLE_DIAGNOSTIC_WARNING:
+    case CDK_STYLE_ANNOTATION_ERROR:
+    case CDK_STYLE_ANNOTATION_WARNING:
       return FALSE;
     default:
       return TRUE;
