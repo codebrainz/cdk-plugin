@@ -207,7 +207,7 @@ cdk_highlighter_new (struct CdkPlugin_ *plugin, struct GeanyDocument *doc)
 }
 
 static void
-cdk_highlighter_apply_style (CdkHighlighter *self,
+cdk_highlighter_apply_style (G_GNUC_UNUSED CdkHighlighter *self,
                              GeanyDocument *doc,
                              CdkStyleID style_id,
                              guint start_pos,
@@ -225,7 +225,7 @@ cdk_highlighter_apply_style (CdkHighlighter *self,
 
 static gboolean
 cdk_highlighter_editor_notify (GtkWidget *widget,
-                               gint unused,
+                               G_GNUC_UNUSED gint unused,
                                SCNotification *nt,
                                CdkHighlighter *self)
 {

@@ -398,7 +398,7 @@ cdk_plugin_remove_document (CdkPlugin *self, struct GeanyDocument *doc)
 }
 
 static enum CXErrorCode
-cdk_plugin_reparse_unsaved (CdkPlugin *self,
+cdk_plugin_reparse_unsaved (G_GNUC_UNUSED CdkPlugin *self,
                             CXTranslationUnit tu,
                             GeanyDocument *doc)
 {

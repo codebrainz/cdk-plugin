@@ -35,7 +35,6 @@ enum
 static GParamSpec *cdk_document_helper_properties[NUM_PROPERTIES] = { NULL };
 static gulong cdk_document_helper_signals[NUM_SIGNALS] = { 0 };
 
-static void cdk_document_helper_finalize (GObject *object);
 static void cdk_document_helper_set_property (GObject *object,
                                               guint prop_id,
                                               const GValue *value,
@@ -65,7 +64,6 @@ cdk_document_helper_class_init (CdkDocumentHelperClass *klass)
   GObjectClass *g_object_class = G_OBJECT_CLASS (klass);
 
   g_object_class->constructed = cdk_document_helper_constructed;
-  g_object_class->finalize = cdk_document_helper_finalize;
   g_object_class->set_property = cdk_document_helper_set_property;
   g_object_class->get_property = cdk_document_helper_get_property;
 
@@ -96,15 +94,6 @@ cdk_document_helper_class_init (CdkDocumentHelperClass *klass)
                   1, G_TYPE_POINTER);
 
   g_type_class_add_private ((gpointer)klass, sizeof (CdkDocumentHelperPrivate));
-}
-
-static void
-cdk_document_helper_finalize (GObject *object)
-{
-  CdkDocumentHelper *self;
-  g_return_if_fail (CDK_IS_DOCUMENT_HELPER (object));
-  self = CDK_DOCUMENT_HELPER (object);
-  G_OBJECT_CLASS (cdk_document_helper_parent_class)->finalize (object);
 }
 
 static void

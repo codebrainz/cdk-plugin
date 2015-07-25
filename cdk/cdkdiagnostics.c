@@ -351,24 +351,11 @@ cdk_diagnostics_set_compiler_messages_enabled (CdkDiagnostics *self,
 }
 
 static void
-cdk_diagnostics_annotate_line (CdkDiagnostics *self,
+cdk_diagnostics_annotate_line (G_GNUC_UNUSED CdkDiagnostics *self,
                                CXDiagnostic diag,
                                guint line,
                                ScintillaObject *sci)
 {
-  CXString text = clang_getDiagnosticSpelling (diag);
-  CXString option = clang_getDiagnosticOption (diag, NULL);
-  gchar *message;
-  if (strlen (clang_getCString (option)) == 0)
-    message = g_strdup (clang_getCString (text));
-  else
-    message = g_strdup_printf ("%s [%s]", clang_getCString (text), clang_getCString (option));
-  clang_disposeString (text);
-  clang_disposeString (option);
-
-  cdk_sci_send (sci, SCI_ANNOTATIONSETTEXT, line - 1, message);
-  g_free (message);
-
   gint style = CDK_STYLE_DEFAULT;
   enum CXDiagnosticSeverity severity = clang_getDiagnosticSeverity (diag);
   switch (severity)
@@ -380,7 +367,23 @@ cdk_diagnostics_annotate_line (CdkDiagnostics *self,
     case CXDiagnostic_Fatal:
       style = CDK_STYLE_ANNOTATION_ERROR;
       break;
+    default:
+      return;
     }
+
+  CXString text = clang_getDiagnosticSpelling (diag);
+  CXString option = clang_getDiagnosticOption (diag, NULL);
+  gchar *message;
+
+  if (strlen (clang_getCString (option)) == 0)
+    message = g_strdup (clang_getCString (text));
+  else
+    message = g_strdup_printf ("%s [%s]", clang_getCString (text), clang_getCString (option));
+  clang_disposeString (text);
+  clang_disposeString (option);
+
+  cdk_sci_send (sci, SCI_ANNOTATIONSETTEXT, line - 1, message);
+  g_free (message);
 
   cdk_sci_send (sci, SCI_ANNOTATIONSETSTYLE, line - 1, style);
   cdk_sci_send (sci, SCI_ANNOTATIONSETVISIBLE, ANNOTATION_BOXED, 0);
@@ -420,7 +423,7 @@ cdk_diagnostics_find_clicked_line (CdkDiagnostics *self,
 
 static void
 cdk_diagnostics_sci_notify (CdkDiagnostics *self,
-                            gint unused,
+                            G_GNUC_UNUSED gint unused,
                             SCNotification *notification,
                             ScintillaObject *sci)
 {
@@ -484,7 +487,7 @@ cdk_diagnostics_deinitialize_document (CdkDiagnostics *self,
 }
 
 static inline void
-cdk_diagnostics_clear_indicator (CdkDiagnostics *self,
+cdk_diagnostics_clear_indicator (G_GNUC_UNUSED CdkDiagnostics *self,
                                  GeanyDocument *document,
                                  gint indic)
 {
@@ -502,7 +505,7 @@ cdk_diagnostics_clear_indicators (CdkDiagnostics *self,
 }
 
 static void
-cdk_diagnostics_clear_markers (CdkDiagnostics *self,
+cdk_diagnostics_clear_markers (G_GNUC_UNUSED CdkDiagnostics *self,
                                GeanyDocument *document)
 {
   ScintillaObject *sci = document->editor->sci;
@@ -511,7 +514,7 @@ cdk_diagnostics_clear_markers (CdkDiagnostics *self,
 }
 
 static void
-cdk_diagnostics_clear_compiler_messages (CdkDiagnostics *self)
+cdk_diagnostics_clear_compiler_messages (G_GNUC_UNUSED CdkDiagnostics *self)
 {
   msgwin_clear_tab (MSG_COMPILER);
 }
@@ -521,9 +524,7 @@ cdk_diagnostics_set_compiler_message (CdkDiagnostics *self,
                                       CXDiagnostic diag)
 {
   CdkDocumentHelper *helper = CDK_DOCUMENT_HELPER (self);
-  CdkPlugin *plugin = cdk_document_helper_get_plugin (helper);
   GeanyDocument *document = cdk_document_helper_get_document (helper);
-  CXTranslationUnit tu = cdk_plugin_get_translation_unit (plugin, document);
   CXString text = clang_getDiagnosticSpelling (diag);
   CXString option = clang_getDiagnosticOption (diag, NULL);
   CXSourceLocation locn = clang_getDiagnosticLocation (diag);
@@ -570,8 +571,8 @@ cdk_diagnostics_set_compiler_message (CdkDiagnostics *self,
 static gboolean
 cdk_diagnostics_apply_each_compiler_message (CdkDiagnostics *self,
                                              CXDiagnostic diag,
-                                             guint position,
-                                             gpointer user_data)
+                                             G_GNUC_UNUSED guint position,
+                                             G_GNUC_UNUSED gpointer user_data)
 {
   cdk_diagnostics_set_compiler_message (self, diag);
   return TRUE;
@@ -671,11 +672,10 @@ cdk_diagnostics_foreach (CdkDiagnostics *self,
 static gboolean
 cdk_diagnostics_range_iter (CdkDiagnostics *self,
                             gpointer diag,
-                            guint position,
+                            G_GNUC_UNUSED guint position,
                             gpointer user_data)
 {
   struct CdkDiagnosticsRangeData *data = user_data;
-  gint *cnt_ptr = user_data;
 
   guint n_ranges = clang_getDiagnosticNumRanges (diag);
   for (guint i = 0; i < n_ranges; i++)
@@ -717,7 +717,7 @@ cdk_diagnostics_foreach_range (CdkDiagnostics *self,
 static gboolean
 cdk_diagnostics_apply_each_indicator (CdkDiagnostics *self,
                                       CXDiagnostic diag,
-                                      guint index,
+                                      G_GNUC_UNUSED guint index,
                                       guint start,
                                       guint end,
                                       gpointer document)

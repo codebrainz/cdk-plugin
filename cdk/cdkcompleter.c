@@ -26,17 +26,7 @@ enum
   NUM_PROPERTIES,
 };
 
-static GParamSpec *cdk_completer_properties[NUM_PROPERTIES] = { NULL };
-
 static void cdk_completer_finalize (GObject *object);
-static void cdk_completer_get_property (GObject *object,
-                                         guint prop_id,
-                                         GValue *value,
-                                         GParamSpec *pspec);
-static void cdk_completer_set_property (GObject *object,
-                                         guint prop_id,
-                                         const GValue *value,
-                                         GParamSpec *pspec);
 static void cdk_completer_sci_notify (CdkCompleter *self,
                                       gint unused,
                                       SCNotification *notif,
@@ -86,12 +76,6 @@ cdk_completer_class_init (CdkCompleterClass *klass)
   dh_object_class->initialize = cdk_completer_initialize_document;
 
   g_object_class->finalize = cdk_completer_finalize;
-  g_object_class->get_property = cdk_completer_get_property;
-  g_object_class->set_property = cdk_completer_set_property;
-
-  //g_object_class_install_properties (g_object_class,
-  //                                   NUM_PROPERTIES,
-  //                                   cdk_completer_properties);
 
   g_type_class_add_private ((gpointer)klass, sizeof (CdkCompleterPrivate));
 }
@@ -115,38 +99,6 @@ static void
 cdk_completer_init (CdkCompleter *self)
 {
   self->priv = G_TYPE_INSTANCE_GET_PRIVATE (self, CDK_TYPE_COMPLETER, CdkCompleterPrivate);
-}
-
-static void
-cdk_completer_get_property (GObject *object,
-                            guint prop_id,
-                            GValue *value,
-                            GParamSpec *pspec)
-{
-  CdkCompleter *self = CDK_COMPLETER (object);
-
-  switch (prop_id)
-    {
-    default:
-      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
-      break;
-    }
-}
-
-static void
-cdk_completer_set_property (GObject *object,
-                            guint prop_id,
-                            const GValue *value,
-                            GParamSpec *pspec)
-{
-  CdkCompleter *self = CDK_COMPLETER (object);
-
-  switch (prop_id)
-    {
-    default:
-      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
-      break;
-    }
 }
 
 CdkCompleter *
@@ -255,7 +207,7 @@ cdk_completer_handle_key (CdkCompleter *self,
 
 static void
 cdk_completer_sci_notify (CdkCompleter *self,
-                          gint unused,
+                          G_GNUC_UNUSED gint unused,
                           SCNotification *notif,
                           ScintillaObject *sci)
 {

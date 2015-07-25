@@ -264,12 +264,12 @@ parse_color (const gchar *cstr)
 }
 
 static void
-on_start_element (GMarkupParseContext *context,
-                  const gchar         *el_name,
-                  const gchar        **attr_names,
-                  const gchar        **attr_values,
-                  gpointer             user_data,
-                  GError             **error)
+on_start_element (G_GNUC_UNUSED GMarkupParseContext *context,
+                  const gchar                       *el_name,
+                  const gchar                      **attr_names,
+                  const gchar                      **attr_values,
+                  gpointer                           user_data,
+                  G_GNUC_UNUSED GError             **error)
 {
   CdkStyleScheme *self = CDK_STYLE_SCHEME (user_data);
 
@@ -355,10 +355,10 @@ on_start_element (GMarkupParseContext *context,
 }
 
 static void
-on_end_element (GMarkupParseContext *context,
-                const gchar         *el_name,
-                gpointer             user_data,
-                GError             **error)
+on_end_element (G_GNUC_UNUSED GMarkupParseContext *context,
+                const gchar                       *el_name,
+                gpointer                           user_data,
+                G_GNUC_UNUSED GError             **error)
 {
   CdkStyleScheme *self = CDK_STYLE_SCHEME (user_data);
 

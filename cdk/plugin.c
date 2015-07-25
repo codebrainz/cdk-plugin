@@ -135,7 +135,7 @@ static void on_project_dialog_open (G_GNUC_UNUSED GObject *object,
 }
 
 static void on_project_dialog_close (G_GNUC_UNUSED GObject *object,
-  GtkWidget *notebook, G_GNUC_UNUSED gpointer user_data)
+  G_GNUC_UNUSED GtkWidget *notebook, G_GNUC_UNUSED gpointer user_data)
 {
 }
 
@@ -149,7 +149,7 @@ static gchar *text_view_get_text (GtkTextView *tv)
 }
 
 static void on_project_dialog_confirmed (G_GNUC_UNUSED GObject *object,
-  GtkWidget *notebook, G_GNUC_UNUSED gpointer user_data)
+  G_GNUC_UNUSED GtkWidget *notebook, G_GNUC_UNUSED gpointer user_data)
 {
   if (! cdk_project_is_open ())
     return;
