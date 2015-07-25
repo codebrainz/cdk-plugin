@@ -1,7 +1,7 @@
 AC_INIT([cdk], [0.1], [https://github.com/codebrainz/geany-cdk/Issues])
 AC_CONFIG_MACRO_DIR([build-aux/m4])
 AC_CONFIG_AUX_DIR([build-aux])
-AM_INIT_AUTOMAKE([foreign -Wall -Werror])
+AM_INIT_AUTOMAKE([foreign -Wall -Wno-portability])
 AM_SILENT_RULES([yes])
 
 AM_PROG_AR
@@ -21,10 +21,18 @@ AC_CHECK_LIB([clang], [clang_createIndex], [
 	AC_MSG_ERROR([unable to find the Clang library (libclang)])
 ])
 
+# Optional GTK-DOC support
+m4_ifdef([GTK_DOC_CHECK], [
+GTK_DOC_CHECK([1.14],[--flavour no-tmpl])
+], [
+AM_CONDITIONAL([ENABLE_GTK_DOC], false)
+])
+
 AC_CONFIG_HEADERS([cdk/config.h])
 AC_CONFIG_FILES([
 	Makefile
 	cdk/Makefile
 	cdk/cdk.pc
+  docs/reference/libcdk/Makefile
 ])
 AC_OUTPUT

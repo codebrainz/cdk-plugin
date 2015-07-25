@@ -1,2 +1,2 @@
 ACLOCAL_AMFLAGS = -I build-aux/m4
-SUBDIRS = cdk
+SUBDIRS = cdk docs/reference/libcdk

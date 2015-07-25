@@ -18,9 +18,25 @@ Makefile.in
 /build-aux/
 /config.*
 /configure
+/gtk-doc.make
 /libtool
 /cdk/cdk.h
 /cdk/cdk.pc
 /cdk/cdk.vapi
 /cdk/config.h*
 /cdk/stamp-h1
+
+# GTK-DOC files that aren't customized (yet)
+/docs/reference/libcdk/cdk-decl-list.txt
+/docs/reference/libcdk/cdk-decl.txt
+/docs/reference/libcdk/cdk-overrides.txt
+/docs/reference/libcdk/cdk-undeclared.txt
+/docs/reference/libcdk/cdk-undocumented.txt
+/docs/reference/libcdk/cdk-unused.txt
+/docs/reference/libcdk/cdk.args
+/docs/reference/libcdk/cdk.hierarchy
+/docs/reference/libcdk/cdk.interfaces
+/docs/reference/libcdk/cdk.prerequisites
+/docs/reference/libcdk/cdk.signals
+/docs/reference/libcdk/html/
+/docs/reference/libcdk/xml/
