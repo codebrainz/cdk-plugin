@@ -3,7 +3,6 @@ exec_prefix=@exec_prefix@
 includedir=@includedir@
 libdir=@libdir@
 plugindir=@libdir@/geany
-vapidir=@datadir@/vala/vapi
 
 Name: @PACKAGE@
 Description: Support library for the C/C++ Development Kit
