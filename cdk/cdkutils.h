@@ -11,6 +11,7 @@
 struct GeanyDocument;
 struct _ScintillaObject;
 struct CdkStyle;
+struct _ScintillaObject;
 struct GeanyData;
 extern struct GeanyData *geany_data;
 
@@ -27,6 +28,8 @@ void cdk_scintilla_set_style (struct _ScintillaObject *sci, guint id, const stru
 
 #define cdk_sci_send(sci, msg, uparam, lparam) \
   scintilla_send_message (SCINTILLA (sci), (guint)(msg), (uptr_t)(uparam), (sptr_t)(lparam))
+
+gchar *cdk_sci_get_current_word (struct _ScintillaObject *sci);
 
 G_END_DECLS
 

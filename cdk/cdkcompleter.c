@@ -137,7 +137,7 @@ cdk_completer_complete (CdkCompleter *self,
   gint len = (gint) current_pos - (gint) word_start;
   // libclang uses 1-based line, Scintilla uses 0-based line
   guint line = cdk_sci_send (sci, SCI_LINEFROMPOSITION, current_pos, 0) + 1;
-  guint col = cdk_sci_send (sci, SCI_GETCOLUMN, current_pos, 0);
+  guint col = cdk_sci_send (sci, SCI_GETCOLUMN, current_pos, 0) - 1;
 
   CXCodeCompleteResults *comp_res =
     clang_codeCompleteAt (tu, doc->real_path, line, col, usf_ptr, n_usf,

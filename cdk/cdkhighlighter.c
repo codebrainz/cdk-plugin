@@ -13,8 +13,10 @@
 #include <geanyplugin.h>
 #include <SciLexer.h>
 #include <clang-c/Index.h>
+#include <ctype.h>
 
 #define CDK_HIGHLIGHTER_TIMEOUT 500
+#define CDK_HL_OCCUR_INDIC INDIC_CONTAINER+10
 
 struct CdkHighlighterPrivate_
 {
@@ -24,6 +26,7 @@ struct CdkHighlighterPrivate_
   gint start_pos, end_pos;  // start/end of update range
   CdkStyleScheme *scheme;   // the style scheme being applied
   glong prev_lexer;         // the lexer the document had previously
+  gboolean hl_occur;        // whether to highlight occurrences of symbol
 };
 
 enum
@@ -36,6 +39,7 @@ enum
 {
   PROP_0,
   PROP_SCHEME,
+  PROP_HL_OCCUR,
   NUM_PROPERTIES,
 };
 
@@ -51,6 +55,7 @@ static gboolean cdk_highlighter_editor_notify (GtkWidget *widget,
                                                gint unused,
                                                SCNotification *nt,
                                                CdkHighlighter *self);
+static void cdk_highlighter_highlight_occurrences (CdkHighlighter *self);
 
 G_DEFINE_TYPE (CdkHighlighter, cdk_highlighter, CDK_TYPE_DOCUMENT_HELPER)
 
@@ -74,6 +79,12 @@ cdk_highlighter_initialize_document (CdkDocumentHelper *object,
   // disable the built-in lexer
   self->priv->prev_lexer = cdk_sci_send (sci, SCI_GETLEXER, 0, 0);
   cdk_sci_send (sci, SCI_SETLEXER, SCLEX_CONTAINER, 0);
+
+  // setup the indicator used for highlight occurrences
+  cdk_sci_send (sci, SCI_INDICSETSTYLE, CDK_HL_OCCUR_INDIC, INDIC_ROUNDBOX);
+  cdk_sci_send (sci, SCI_INDICSETFORE, CDK_HL_OCCUR_INDIC, 0);
+  cdk_sci_send (sci, SCI_INDICSETALPHA, CDK_HL_OCCUR_INDIC, 32);
+  cdk_sci_send (sci, SCI_INDICSETOUTLINEALPHA, CDK_HL_OCCUR_INDIC, 64);
 
   self->priv->editor_notif_hnd =
     g_signal_connect (sci, "sci-notify", G_CALLBACK (cdk_highlighter_editor_notify), self);
@@ -130,6 +141,13 @@ cdk_highlighter_class_init (CdkHighlighterClass *klass)
                          CDK_TYPE_STYLE_SCHEME,
                          G_PARAM_CONSTRUCT | G_PARAM_READWRITE);
 
+  cdk_highlighter_properties[PROP_HL_OCCUR] =
+    g_param_spec_boolean ("highlight-occurrences",
+                          "HighlightOccurrences",
+                          "Whether to highlight occurrences of symbols",
+                          TRUE,
+                          G_PARAM_CONSTRUCT | G_PARAM_READWRITE);
+
   g_object_class_install_properties (g_object_class, NUM_PROPERTIES,
                                      cdk_highlighter_properties);
 
@@ -162,6 +180,7 @@ cdk_highlighter_init (CdkHighlighter *self)
 {
   self->priv = G_TYPE_INSTANCE_GET_PRIVATE (self, CDK_TYPE_HIGHLIGHTER, CdkHighlighterPrivate);
   self->priv->timeout = CDK_HIGHLIGHTER_TIMEOUT;
+  self->priv->hl_occur = TRUE;
 }
 
 static void
@@ -175,6 +194,9 @@ cdk_highlighter_get_property (GObject *object,
     {
     case PROP_SCHEME:
       g_value_set_object (value, cdk_highlighter_get_style_scheme (self));
+      break;
+    case PROP_HL_OCCUR:
+      g_value_set_boolean (value, cdk_highlighter_get_highlight_occurrences (self));
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -193,6 +215,9 @@ cdk_highlighter_set_property (GObject *object,
     {
     case PROP_SCHEME:
       cdk_highlighter_set_style_scheme (self, g_value_get_object (value));
+      break;
+    case PROP_HL_OCCUR:
+      cdk_highlighter_set_highlight_occurrences (self, g_value_get_boolean (value));
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -230,16 +255,103 @@ cdk_highlighter_editor_notify (GtkWidget *widget,
                                CdkHighlighter *self)
 {
   ScintillaObject *sci = SCINTILLA (widget);
-  if (nt->nmhdr.code != SCN_STYLENEEDED)
+
+  if (nt->nmhdr.code == SCN_UPDATEUI)
+    {
+      cdk_highlighter_highlight_occurrences (self);
+      return FALSE;
+    }
+  else if (nt->nmhdr.code != SCN_STYLENEEDED)
+    {
+      guint start_pos = cdk_sci_send (sci, SCI_GETENDSTYLED, 0, 0);
+      guint line_num = cdk_sci_send (sci, SCI_LINEFROMPOSITION, start_pos, 0);
+      start_pos = cdk_sci_send (sci, SCI_POSITIONFROMLINE, line_num, 0);
+
+      cdk_highlighter_queue_highlight (self, start_pos, nt->position);
+
+      return TRUE;
+    }
+  else
     return FALSE;
+}
 
-  guint start_pos = cdk_sci_send (sci, SCI_GETENDSTYLED, 0, 0);
-  guint line_num = cdk_sci_send (sci, SCI_LINEFROMPOSITION, start_pos, 0);
-  start_pos = cdk_sci_send (sci, SCI_POSITIONFROMLINE, line_num, 0);
+static void
+cdk_highlighter_clear_occurrences (G_GNUC_UNUSED CdkHighlighter *self,
+                                   ScintillaObject *sci)
+{
+  cdk_sci_send (sci, SCI_SETINDICATORCURRENT, CDK_HL_OCCUR_INDIC, 0);
+  cdk_sci_send (sci, SCI_INDICATORCLEARRANGE, 0,
+                cdk_sci_send (sci, SCI_GETLENGTH, 0, 0));
+}
 
-  cdk_highlighter_queue_highlight (self, start_pos, nt->position);
+static CXCursor
+cdk_highlighter_get_cursor_at_pos (G_GNUC_UNUSED CdkHighlighter *self,
+                                   CXTranslationUnit tu,
+                                   GeanyDocument *doc,
+                                   gint offset)
+{
+  CXFile file = clang_getFile (tu, doc->real_path);
+  CXSourceLocation locn = clang_getLocationForOffset (tu, file, offset);
+  return clang_getCursor (tu, locn);
+}
 
-  return TRUE;
+static void
+cdk_highlighter_highlight_occurrences (CdkHighlighter *self)
+{
+  CdkDocumentHelper *helper = CDK_DOCUMENT_HELPER (self);
+  GeanyDocument *doc = cdk_document_helper_get_document (helper);
+  ScintillaObject *sci = doc->editor->sci;
+  CdkPlugin *plugin = cdk_document_helper_get_plugin (helper);
+  CXTranslationUnit tu = cdk_plugin_get_translation_unit (plugin, doc);
+
+  cdk_highlighter_clear_occurrences (self, sci);
+
+  gchar *cur_word = cdk_sci_get_current_word (sci);
+  if (! cur_word || ! *cur_word || (! isalpha (*cur_word) && *cur_word != '_'))
+    { // no current identifier, do nothing
+      g_free (cur_word);
+      return;
+    }
+
+  gint word_len = strlen (cur_word);
+  gint first_line = cdk_sci_send (sci, SCI_GETFIRSTVISIBLELINE, 0, 0);
+  gint num_lines = cdk_sci_send (sci, SCI_LINESONSCREEN, 0, 0);
+  gint last_line = first_line + num_lines;
+  gint start_pos = cdk_sci_send (sci, SCI_POSITIONFROMLINE, first_line, 0);
+  gint end_pos = cdk_sci_send (sci, SCI_GETLINEENDPOSITION, last_line, 0);
+
+  gint current_pos = cdk_sci_send (sci, SCI_GETCURRENTPOS, 0, 0);
+  CXCursor cur_cursor = cdk_highlighter_get_cursor_at_pos (self, tu, doc, current_pos);
+  cur_cursor = clang_getCursorReferenced (cur_cursor);
+
+  cdk_sci_send (sci, SCI_SETSEARCHFLAGS, SCFIND_MATCHCASE | SCFIND_WHOLEWORD, 0);
+
+  gint start = start_pos;
+  gint n_matches = 0;
+  while (TRUE)
+    {
+      cdk_sci_send (sci, SCI_SETTARGETRANGE, start, end_pos);
+      gint result = cdk_sci_send (sci, SCI_SEARCHINTARGET, word_len, cur_word);
+      if (result < 0)
+        break;
+
+      gint found_start = cdk_sci_send (sci, SCI_GETTARGETSTART, 0, 0);
+      gint found_end = cdk_sci_send (sci, SCI_GETTARGETEND, 0, 0);
+
+      CXCursor test_cursor = cdk_highlighter_get_cursor_at_pos (self, tu, doc, found_start);
+      test_cursor = clang_getCursorReferenced (test_cursor);
+      if (clang_equalCursors (cur_cursor, test_cursor))
+        {
+          cdk_sci_send (sci, SCI_INDICATORFILLRANGE, found_start, found_end - found_start);
+          n_matches++;
+        }
+      start = found_end;
+    }
+
+  if (n_matches <= 1)
+    cdk_highlighter_clear_occurrences (self, sci);
+
+  g_free (cur_word);
 }
 
 gboolean
@@ -414,5 +526,25 @@ cdk_highlighter_set_style_scheme (CdkHighlighter *self, CdkStyleScheme *scheme)
         }
 
       g_object_notify (G_OBJECT (self), "style-scheme");
+    }
+}
+
+gboolean
+cdk_highlighter_get_highlight_occurrences (CdkHighlighter *self)
+{
+  g_return_val_if_fail (CDK_IS_HIGHLIGHTER (self), FALSE);
+  return self->priv->hl_occur;
+}
+
+void
+cdk_highlighter_set_highlight_occurrences (CdkHighlighter *self,
+                                           gboolean hl_occur)
+{
+  g_return_if_fail (CDK_IS_HIGHLIGHTER (self));
+
+  if (hl_occur != self->priv->hl_occur)
+    {
+      self->priv->hl_occur = hl_occur;
+      g_object_notify (G_OBJECT (self), "highlight-occurrences");
     }
 }

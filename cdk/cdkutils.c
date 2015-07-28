@@ -39,3 +39,22 @@ cdk_scintilla_set_style (struct _ScintillaObject *sci, guint id, const struct Cd
   if (style->size > 0)
     cdk_sci_send (sci, SCI_STYLESETSIZE, id, style->size);
 }
+
+gchar *
+cdk_sci_get_current_word (struct _ScintillaObject *sci)
+{
+  g_return_val_if_fail (IS_SCINTILLA (sci), NULL);
+
+  gint cur_pos = cdk_sci_send (sci, SCI_GETCURRENTPOS, 0, 0);
+  gint word_start = cdk_sci_send (sci, SCI_WORDSTARTPOSITION, cur_pos, TRUE);
+  gint word_end = cdk_sci_send (sci, SCI_WORDENDPOSITION, cur_pos, TRUE);
+
+  struct Sci_TextRange tr;
+  tr.chrg.cpMin = word_start;
+  tr.chrg.cpMax = word_end;
+  tr.lpstrText = g_malloc0 ((word_end - word_start) + 1);
+
+  cdk_sci_send (sci, SCI_GETTEXTRANGE, 0, &tr);
+
+  return tr.lpstrText;
+}

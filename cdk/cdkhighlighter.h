@@ -41,6 +41,8 @@ gboolean cdk_highlighter_highlight_all (CdkHighlighter *self);
 void cdk_highlighter_queue_highlight (CdkHighlighter *self, gint start_pos, gint end_pos);
 CdkStyleScheme *cdk_highlighter_get_style_scheme (CdkHighlighter *self);
 void cdk_highlighter_set_style_scheme (CdkHighlighter *self, CdkStyleScheme *scheme);
+gboolean cdk_highlighter_get_highlight_occurrences (CdkHighlighter *self);
+void cdk_highlighter_set_highlight_occurrences (CdkHighlighter *self, gboolean hl_occur);
 
 G_END_DECLS
 
