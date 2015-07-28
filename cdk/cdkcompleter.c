@@ -18,6 +18,10 @@ struct CdkCompleterPrivate_
   gulong sci_handler;
   uptr_t prev_autoc_order;
   uptr_t prev_autoc_sep;
+#ifdef GEANY_API_VERSION >= 255
+  gboolean geany_autoc_saved;
+  gboolean geany_calltips_saved;
+#endif
 };
 
 enum
@@ -41,6 +45,14 @@ cdk_completer_initialize_document (CdkDocumentHelper *object,
   CdkCompleter *self = CDK_COMPLETER (object);
   ScintillaObject *sci = document->editor->sci;
 
+#if GEANY_API_VERSION >= 225
+  self->priv->geany_autoc_saved =
+    editor_set_feature (document->editor, GEANY_EDITOR_FEATURE_AUTO_COMPLETION, FALSE);
+
+  self->priv->geany_calltips_saved =
+    editor_set_feature (document->editor, GEANY_EDITOR_FEATURE_CALLTIPS, FALSE);
+#endif
+
   self->priv->prev_autoc_order = cdk_sci_send (sci, SCI_AUTOCGETORDER, 0, 0);
   self->priv->prev_autoc_sep = cdk_sci_send (sci, SCI_AUTOCGETSEPARATOR, 0, 0);
 
@@ -62,6 +74,14 @@ cdk_completer_deinitialize_document (CdkCompleter  *self,
 
   cdk_sci_send (sci, SCI_AUTOCSETORDER, self->priv->prev_autoc_order, 0);
   cdk_sci_send (sci, SCI_AUTOCSETSEPARATOR, self->priv->prev_autoc_sep, 0);
+
+#if GEANY_API_VERSION >= 225
+  editor_set_feature (document->editor, GEANY_EDITOR_FEATURE_AUTO_COMPLETION,
+                      self->priv->geany_autoc_saved);
+
+  editor_set_feature (document->editor, GEANY_EDITOR_FEATURE_CALLTIPS,
+                      self->priv->geany_calltips_saved);
+#endif
 }
 
 static void
@@ -137,7 +157,7 @@ cdk_completer_complete (CdkCompleter *self,
   gint len = (gint) current_pos - (gint) word_start;
   // libclang uses 1-based line, Scintilla uses 0-based line
   guint line = cdk_sci_send (sci, SCI_LINEFROMPOSITION, current_pos, 0) + 1;
-  guint col = cdk_sci_send (sci, SCI_GETCOLUMN, current_pos, 0);
+  guint col = cdk_sci_send (sci, SCI_GETCOLUMN, current_pos, 0) - 1;
 
   CXCodeCompleteResults *comp_res =
     clang_codeCompleteAt (tu, doc->real_path, line, col, usf_ptr, n_usf,

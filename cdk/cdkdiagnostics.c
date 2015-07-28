@@ -32,6 +32,10 @@ struct CdkDiagnosticsPrivate_
   gulong sci_notify_hnd;
   gboolean annot_on;
   gchar *msgdir;
+#if GEANY_API_VERSION >= 225
+  gboolean geany_error_indics_saved;
+  gboolean geany_marking_markers_saved;
+#endif
 };
 
 struct CdkDiagnosticsRangeData
@@ -451,6 +455,14 @@ cdk_diagnostics_initialize_document (CdkDocumentHelper *object,
   CdkDiagnostics *self = CDK_DIAGNOSTICS (object);
   ScintillaObject *sci = document->editor->sci;
 
+#if GEANY_API_VERSION >= 225
+  self->priv->geany_error_indics_saved =
+    editor_set_feature (document->editor, GEANY_EDITOR_FEATURE_ERROR_INDICATORS, FALSE);
+
+  self->priv->geany_marking_markers_saved =
+    editor_set_feature (document->editor, GEANY_EDITOR_FEATURE_MARGIN_MARKERS, FALSE);
+#endif
+
   self->priv->prev_w_indic_style = cdk_sci_send (sci, SCI_INDICGETSTYLE, CDK_DIAGNOSTICS_INDIC_WARNING, 0);
   self->priv->prev_w_indic_fore = cdk_sci_send (sci, SCI_INDICGETFORE, CDK_DIAGNOSTICS_INDIC_WARNING, 0);
   self->priv->prev_e_indic_style = cdk_sci_send (sci, SCI_INDICGETSTYLE, CDK_DIAGNOSTICS_INDIC_ERROR, 0);
@@ -484,6 +496,14 @@ cdk_diagnostics_deinitialize_document (CdkDiagnostics *self,
   cdk_sci_send (sci, SCI_INDICSETFORE, CDK_DIAGNOSTICS_INDIC_WARNING, self->priv->prev_w_indic_fore);
   cdk_sci_send (sci, SCI_INDICSETSTYLE, CDK_DIAGNOSTICS_INDIC_ERROR, self->priv->prev_e_indic_style);
   cdk_sci_send (sci, SCI_INDICSETFORE, CDK_DIAGNOSTICS_INDIC_ERROR, self->priv->prev_e_indic_fore);
+
+#if GEANY_API_VERSION >= 225
+  editor_set_feature (document->editor, GEANY_EDITOR_FEATURE_ERROR_INDICATORS,
+                      self->priv->geany_error_indics_saved);
+
+  editor_set_feature (document->editor, GEANY_EDITOR_FEATURE_MARGIN_MARKERS,
+                      self->priv->geany_marking_markers_saved);
+#endif
 }
 
 static inline void
