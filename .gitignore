@@ -20,7 +20,6 @@ Makefile.in
 /configure
 /gtk-doc.make
 /libtool
-/cdk/cdk.h
 /cdk/cdk.pc
 /cdk/cdk.vapi
 /cdk/config.h*
