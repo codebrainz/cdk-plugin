@@ -1,5 +1,6 @@
 <SECTION>
 <FILE>cdkcompleter</FILE>
+<TITLE>Auto-Completion</TITLE>
 cdk_completer_new
 cdk_document_get_completer
 <SUBSECTION Standard>
@@ -17,6 +18,8 @@ cdk_completer_get_type
 
 <SECTION>
 <FILE>cdkdiagnostics</FILE>
+CdkDiagnosticFunc
+CdkDiagnosticRangeFunc
 cdk_diagnostics_new
 cdk_diagnostics_get_style_scheme
 cdk_diagnostics_set_style_scheme
@@ -26,8 +29,6 @@ cdk_diagnostics_get_markers_enabled
 cdk_diagnostics_set_markers_enabled
 cdk_diagnostics_get_compiler_messages_enabled
 cdk_diagnostics_set_compiler_messages_enabled
-CdkDiagnosticFunc
-CdkDiagnosticRangeFunc
 cdk_diagnostics_foreach
 cdk_diagnostics_foreach_range
 <SUBSECTION Standard>
@@ -45,13 +46,12 @@ cdk_diagnostics_get_type
 
 <SECTION>
 <FILE>cdkdocumenthelper</FILE>
+<TITLE>Base Document Helper</TITLE>
 initialize
 updated
 cdk_document_helper_get_plugin
 cdk_document_helper_get_document
 cdk_document_helper_updated
-CdkPlugin_
-GeanyDocument
 <SUBSECTION Standard>
 CDK_DOCUMENT_HELPER
 CDK_DOCUMENT_HELPER_CLASS
@@ -67,6 +67,7 @@ cdk_document_helper_get_type
 
 <SECTION>
 <FILE>cdkhighlighter</FILE>
+<TITLE>Highlighting</TITLE>
 cdk_highlighter_new
 cdk_highlighter_highlight
 cdk_highlighter_highlight_all
@@ -88,6 +89,7 @@ cdk_highlighter_get_type
 
 <SECTION>
 <FILE>cdkplugin</FILE>
+<TITLE>Plugin Context</TITLE>
 cdk_plugin_new
 cdk_plugin_add_document
 cdk_plugin_remove_document
@@ -105,8 +107,6 @@ cdk_plugin_set_cflags
 cdk_plugin_set_files
 cdk_plugin_get_style_scheme
 cdk_plugin_set_style_scheme
-GeanyDocument
-CXTranslationUnitImpl
 <SUBSECTION Standard>
 CDK_IS_PLUGIN
 CDK_IS_PLUGIN_CLASS
@@ -122,17 +122,22 @@ cdk_plugin_get_type
 
 <SECTION>
 <FILE>cdkstyle</FILE>
+<TITLE>Styles</TITLE>
+CdkStyle
 CdkStyleID
 cdk_style_new
 cdk_style_free
 cdk_style_copy
 <SUBSECTION Standard>
 CDK_TYPE_STYLE
+CDK_TYPE_STYLE_ID
 cdk_style_get_type
+cdk_style_id_get_type
 </SECTION>
 
 <SECTION>
 <FILE>cdkstylescheme</FILE>
+<TITLE>Style Schemes</TITLE>
 cdk_style_schemes_init
 cdk_style_schemes_cleanup
 cdk_style_scheme_new
@@ -160,14 +165,12 @@ cdk_style_scheme_get_type
 
 <SECTION>
 <FILE>cdkutils</FILE>
+<TITLE>Utilities</TITLE>
 cdk_document_get_contents
 cdk_document_get_length
 cdk_scintilla_set_style
 cdk_plugin_get
 cdk_plugin_is_loaded
 cdk_sci_send
-GeanyDocument
-CdkStyle
-GeanyData
 </SECTION>
 

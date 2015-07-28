@@ -11,6 +11,7 @@
 G_BEGIN_DECLS
 
 #define CDK_TYPE_STYLE (cdk_style_get_type ())
+#define CDK_TYPE_STYLE_ID (cdk_style_id_get_type ())
 
 typedef enum
 {
@@ -50,6 +51,8 @@ GType cdk_style_get_type (void);
 CdkStyle *cdk_style_new (void);
 void cdk_style_free (CdkStyle *style);
 CdkStyle *cdk_style_copy (CdkStyle *style);
+
+GType cdk_style_id_get_type (void);
 
 G_END_DECLS
 

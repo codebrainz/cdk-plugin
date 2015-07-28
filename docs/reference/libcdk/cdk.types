@@ -5,4 +5,5 @@ cdk_diagnostics_get_type
 cdk_document_helper_get_type
 cdk_highlighter_get_type
 cdk_plugin_get_type
+cdk_style_get_type
 cdk_style_scheme_get_type

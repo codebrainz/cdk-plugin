@@ -12,7 +12,7 @@ gladeui_DATA = projectpanel.glade
 
 lib_LTLIBRARIES = libcdk.la
 
-libcdk_la_CFLAGS = $(GEANY_CFLAGS) -I$(top_srcdir) \
+libcdk_la_CFLAGS = $(GEANY_CFLAGS) -I$(top_srcdir) -I$(top_builddir)/cdk \
 	-DCDK_STYLE_SCHEME_DIR=\""$(pkgdatadir)/style-schemes"\"
 libcdk_la_LDFLAGS = $(GEANY_LIBS)
 libcdk_la_SOURCES = \

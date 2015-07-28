@@ -3,6 +3,19 @@
  * All rights reserved. See the COPYING file for full license.
  */
 
+/**
+ * SECTION:cdkdiagnostics
+ * @title: Diagnostics
+ * @short_description: Diagnostic highlighting and messages.
+ * @include: cdk/cdk.h
+ *
+ * The #CdkDiagnostics class is a #CdkDocumentHelper that updates various
+ * diagnostics visualizations whenever the translation unit is reparsed.
+ * It's responsible for putting messages in the Compiler tab, putting
+ * the "squiggly lines" below warnings and errors, and putting warning
+ * and error markers in the left symbol margin.
+ */
+
 #include <cdk/cdkdiagnostics.h>
 #include <cdk/cdkplugin.h>
 #include <cdk/cdkutils.h>
@@ -91,6 +104,13 @@ cdk_diagnostics_class_init (CdkDiagnosticsClass *klass)
   g_object_class->get_property = cdk_diagnostics_get_property;
   g_object_class->set_property = cdk_diagnostics_set_property;
 
+  /**
+   * CdkDiagnostics:style-scheme:
+   *
+   * The #CdkStyleScheme used to apply highlighting visualizations. This
+   * property is bound to the #CdkPlugin:style-scheme property of the
+   * #CdkPlugin instance passed to cdk_diagnostics_new().
+   */
   cdk_diagnostics_properties[PROP_SCHEME] =
     g_param_spec_object ("style-scheme",
                          "StyleScheme",
@@ -98,6 +118,12 @@ cdk_diagnostics_class_init (CdkDiagnosticsClass *klass)
                          CDK_TYPE_STYLE_SCHEME,
                          G_PARAM_CONSTRUCT | G_PARAM_READWRITE);
 
+  /**
+   * CdkDiagnostics:indicators-enabled:
+   *
+   * Whether to draw squiggly lines under ranges of the source code
+   * that have warnings or errors.
+   */
   cdk_diagnostics_properties[PROP_INDICATORS_ENABLED] =
     g_param_spec_boolean ("indicators-enabled",
                           "IndicatorsEnabled",
@@ -105,6 +131,11 @@ cdk_diagnostics_class_init (CdkDiagnosticsClass *klass)
                           TRUE,
                           G_PARAM_CONSTRUCT | G_PARAM_READWRITE);
 
+  /**
+   * CdkDiagnostics:markers-enabled:
+   *
+   * Whether to draw warning/error markers in the symbol margin.
+   */
   cdk_diagnostics_properties[PROP_MARKERS_ENABLED] =
     g_param_spec_boolean ("markers-enabled",
                           "MarkersEnabled",
@@ -112,6 +143,11 @@ cdk_diagnostics_class_init (CdkDiagnosticsClass *klass)
                           TRUE,
                           G_PARAM_CONSTRUCT | G_PARAM_READWRITE);
 
+  /**
+   * CdkDiagnostics:compiler-messages-enabled:
+   *
+   * Whether to put diagnostic messages in Geany's Compiler tab.
+   */
   cdk_diagnostics_properties[PROP_COMPILER_MESSAGES_ENABLED] =
     g_param_spec_boolean ("compiler-messages-enabled",
                           "CompilerMessagesEnabled",
@@ -204,6 +240,15 @@ cdk_diagnostics_set_property (GObject *object,
     }
 }
 
+/**
+ * cdk_diagnostics_new:
+ * @plugin: The #CdkPlugin that owns the new instance.
+ * @doc: The #GeanyDocument related to this instance.
+ *
+ * Creates a new #CdkDiagnostics instance.
+ *
+ * Returns: A new #CdkDiagnostics instance or %NULL on error.
+ */
 CdkDiagnostics *
 cdk_diagnostics_new (struct CdkPlugin_ *plugin,
                      struct GeanyDocument *doc)
@@ -211,6 +256,14 @@ cdk_diagnostics_new (struct CdkPlugin_ *plugin,
   return g_object_new (CDK_TYPE_DIAGNOSTICS, "plugin", plugin, "document", doc, NULL);
 }
 
+/**
+ * cdk_diagnostics_get_style_scheme:
+ * @self: The #CdkDiagnostics instance.
+ *
+ * Getter for the #CdkDiagnostics:style-scheme property.
+ *
+ * Returns: The #CdkStyleScheme for this instance.
+ */
 CdkStyleScheme *
 cdk_diagnostics_get_style_scheme (CdkDiagnostics *self)
 {
@@ -218,6 +271,13 @@ cdk_diagnostics_get_style_scheme (CdkDiagnostics *self)
   return self->priv->scheme;
 }
 
+/**
+ * cdk_diagnostics_set_style_scheme:
+ * @self: The #CdkDiagnostics instance.
+ * @scheme: The #CdkStyleScheme to use.
+ *
+ * Setter for the #CdkDiagnostics:style-scheme property.
+ */
 void
 cdk_diagnostics_set_style_scheme (CdkDiagnostics *self,
                                   CdkStyleScheme *scheme)
