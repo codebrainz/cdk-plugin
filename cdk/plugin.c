@@ -123,10 +123,8 @@ static void on_project_dialog_open (G_GNUC_UNUSED GObject *object,
       g_object_unref (builder);
     }
 
-  const gchar *const *cflags_ = cdk_plugin_get_cflags (CDK_PLUGIN (cdk_plugin), NULL);
-  gchar *cflags = g_strjoinv (" ", (GStrv) cflags_);
+  const gchar *cflags = cdk_plugin_get_cflags (CDK_PLUGIN (cdk_plugin));
   gtk_text_buffer_set_text (gtk_text_view_get_buffer (cflags_textview), cflags, -1);
-  g_free (cflags);
 
   const gchar *const *files_ = cdk_plugin_get_files (CDK_PLUGIN (cdk_plugin), NULL);
   gchar *files = g_strjoinv ("\n", (GStrv) files_);

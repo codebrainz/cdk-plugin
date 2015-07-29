@@ -31,7 +31,7 @@ struct CdkPluginPrivate_
   CXIndex         index;         // libclang index for all TUs
   GHashTable     *file_set;      // set of project files
   gboolean        project_open;  // whether a CDK project is open
-  GPtrArray      *cflags;        // compiler flags, null-term array
+  gchar          *cflags;        // compiler flags
   GPtrArray      *files;         // ordered list of project files
   GeanyDocument  *current_doc;   // active document if supported or NULL
   GHashTable     *doc_data;      // maps a document to extra data/helpers
@@ -166,11 +166,11 @@ cdk_plugin_class_init (CdkPluginClass *klass)
                   1, G_TYPE_POINTER);
 
   cdk_plugin_properties[PROP_CFLAGS] =
-    g_param_spec_boxed ("cflags",
-                        "CompilerFlags",
-                        "Flags passed to compiler",
-                        G_TYPE_STRV,
-                        G_PARAM_CONSTRUCT | G_PARAM_READWRITE);
+    g_param_spec_string ("cflags",
+                         "CompilerFlags",
+                         "Flags passed to compiler",
+                         "",
+                         G_PARAM_CONSTRUCT | G_PARAM_READWRITE);
 
   cdk_plugin_properties[PROP_FILES] =
     g_param_spec_boxed ("files",
@@ -217,7 +217,7 @@ cdk_plugin_finalize (GObject *object)
   g_hash_table_destroy (self->priv->file_set);
   g_hash_table_destroy (self->priv->doc_data);
 
-  g_ptr_array_free (self->priv->cflags, TRUE);
+  g_free (self->priv->cflags);
   g_ptr_array_free (self->priv->files, TRUE);
 
   if (self->priv->index)
@@ -235,7 +235,7 @@ cdk_plugin_init (CdkPlugin *self)
 
   self->priv->project_open = FALSE;
   self->priv->index = clang_createIndex (TRUE, TRUE);
-  self->priv->cflags = g_ptr_array_new_with_free_func (g_free);
+  self->priv->cflags = g_strdup ("");
   self->priv->files = g_ptr_array_new_with_free_func (g_free);
   self->priv->file_set = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
   self->priv->doc_data =
@@ -266,7 +266,7 @@ cdk_plugin_get_property (GObject *object,
   switch (prop_id)
     {
     case PROP_CFLAGS:
-      g_value_set_boxed (value, self->priv->cflags->pdata);
+      g_value_set_string (value, cdk_plugin_get_cflags (self));
       break;
     case PROP_FILES:
       g_value_set_boxed (value, self->priv->files->pdata);
@@ -297,7 +297,7 @@ cdk_plugin_set_property (GObject *object,
   switch (prop_id)
     {
     case PROP_CFLAGS:
-      cdk_plugin_set_cflags (self, g_value_get_boxed (value), -1);
+      cdk_plugin_set_cflags (self, g_value_get_string (value));
       break;
     case PROP_FILES:
       cdk_plugin_set_files (self, g_value_get_boxed (value), -1);
@@ -338,14 +338,26 @@ cdk_plugin_create_translation_unit (CdkPlugin *self,
                                     GeanyDocument *doc)
 {
   CXTranslationUnit tu = NULL;
+  gchar **argv = NULL;
+  gint argc = 0;
+  GError *err = NULL;
+
+  if (! g_shell_parse_argv (self->priv->cflags, &argc, &argv, &err))
+    {
+      g_warning ("failed to parse compiler flags: %s", err->message);
+      g_error_free (err);
+      return NULL;
+    }
+
   enum CXErrorCode error =
     clang_parseTranslationUnit2 (self->priv->index,
                                  doc->real_path,
-                                 (const gchar *const *) self->priv->cflags->pdata,
-                                 self->priv->cflags->len - 1,
+                                 (const gchar *const *) argv, argc,
                                  NULL, 0,
                                  clang_defaultEditingTranslationUnitOptions (),
                                  &tu);
+
+  g_strfreev (argv);
 
   if (error == CXError_Success)
     return tu;
@@ -473,26 +485,8 @@ cdk_plugin_open_project (CdkPlugin *self, GKeyFile *config)
         {
           gchar *command = g_key_file_get_string (config, "cdk", "cflags", NULL);
           if (command != NULL)
-            {
-              gchar **argv = NULL;
-              gint argc = 0;
-              GError *error = NULL;
-              if (g_shell_parse_argv (command, &argc, &argv, &error))
-                {
-                  cdk_ptr_array_clear (self->priv->cflags);
-                  for (gint i=0; i < argc; i++)
-                    g_ptr_array_add (self->priv->cflags, argv[i]);
-                  g_ptr_array_add (self->priv->cflags, NULL);
-                  g_free (argv);
-                }
-              else
-                {
-                  g_critical ("failed to parse CDK project compiler flags: %s",
-                              error->message);
-                  g_error_free (error);
-                }
-              g_free (command);
-            }
+            cdk_plugin_set_cflags (self, command);
+          g_free (command);
         }
 
       if (g_key_file_has_key (config, "cdk", "files", NULL))
@@ -530,10 +524,7 @@ cdk_plugin_save_project (CdkPlugin *self, GKeyFile *config)
   if (! self->priv->project_open)
     return;
 
-  gchar *command = g_strjoinv (" ", (gchar**) self->priv->cflags->pdata);
-  g_key_file_set_string (config, "cdk", "cflags", command);
-  g_free (command);
-
+  g_key_file_set_string (config, "cdk", "cflags", self->priv->cflags);
   g_key_file_set_string_list (config, "cdk", "files",
                               (const gchar *const *) self->priv->files->pdata,
                               self->priv->files->len - 1);
@@ -552,7 +543,10 @@ cdk_plugin_close_project (CdkPlugin *self)
   g_hash_table_remove_all (self->priv->doc_data);
   g_hash_table_remove_all (self->priv->file_set);
 
-  cdk_ptr_array_clear (self->priv->cflags);
+  if (self->priv->cflags != NULL)
+    self->priv->cflags[0] = '\0';
+  else
+    self->priv->cflags = g_strdup ("");
   cdk_ptr_array_clear (self->priv->files);
 
   clang_disposeIndex (self->priv->index);
@@ -592,13 +586,11 @@ cdk_plugin_set_current_document (CdkPlugin *self, struct GeanyDocument *doc)
     }
 }
 
-const gchar *const *
-cdk_plugin_get_cflags (CdkPlugin *self, gsize *n_cflags)
+const gchar *
+cdk_plugin_get_cflags (CdkPlugin *self)
 {
   g_return_val_if_fail (CDK_IS_PLUGIN (self), NULL);
-  if (n_cflags != NULL)
-    *n_cflags = self->priv->cflags->len - 1;
-  return (const gchar *const *) self->priv->cflags->pdata;
+  return self->priv->cflags;
 }
 
 const gchar *const *
@@ -612,20 +604,16 @@ cdk_plugin_get_files (CdkPlugin *self, gsize *n_files)
 
 void
 cdk_plugin_set_cflags (CdkPlugin *self,
-                       const gchar *const *cflags,
-                       gssize n_cflags)
+                       const gchar *cflags)
 {
   g_return_if_fail (CDK_IS_PLUGIN (self));
 
-  cdk_ptr_array_clear (self->priv->cflags);
-  if (cflags && n_cflags > 0)
+  if (g_strcmp0 (self->priv->cflags, cflags) != 0)
     {
-      for (const gchar *const *it = cflags; *it != NULL; it++)
-        g_ptr_array_add (self->priv->cflags, g_strdup (*it));
+      g_free (self->priv->cflags);
+      self->priv->cflags = g_strdup (cflags ? cflags : "");
+      g_object_notify (G_OBJECT (self), "cflags");
     }
-  g_ptr_array_add (self->priv->cflags, NULL);
-
-  g_object_notify (G_OBJECT (self), "cflags");
 }
 
 void
