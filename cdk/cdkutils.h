@@ -31,6 +31,9 @@ void cdk_scintilla_set_style (struct _ScintillaObject *sci, guint id, const stru
 
 gchar *cdk_sci_get_current_word (struct _ScintillaObject *sci);
 
+gchar *cdk_abspath (const gchar *path);
+gchar *cdk_relpath (const gchar *path, const gchar *rel_dir);
+
 G_END_DECLS
 
 #endif // CDK_UTILS_H
