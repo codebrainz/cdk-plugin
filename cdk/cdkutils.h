@@ -33,6 +33,7 @@ gchar *cdk_sci_get_current_word (struct _ScintillaObject *sci);
 
 gchar *cdk_abspath (const gchar *path);
 gchar *cdk_relpath (const gchar *path, const gchar *rel_dir);
+gchar **cdk_relpaths (const gchar *const *paths, const gchar *rel_dir);
 
 G_END_DECLS
 

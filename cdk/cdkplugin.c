@@ -14,6 +14,7 @@
 #include <cdk/cdkutils.h>
 #include <geanyplugin.h>
 #include <clang-c/Index.h>
+#include <unistd.h>
 
 typedef struct
 {
@@ -499,12 +500,21 @@ cdk_plugin_open_project (CdkPlugin *self, GKeyFile *config)
             g_key_file_get_string_list (config, "cdk", "files", &n_files, NULL);
           if (files != NULL)
             {
+              // files in config file are relative but we need absolute
+              // so change temorarily into to the project base dir and
+              // expand the paths, then change back into whatever dir
+              // we were in.
+              gchar *cwd = g_get_current_dir ();
+              chdir (geany_data->app->project->base_path);
               for (gsize i = 0; i < n_files; i++)
                 {
-                  g_hash_table_insert (self->priv->file_set, files[i], files[i]);
-                  g_ptr_array_add (self->priv->files, g_strdup (files[i]));
+                  gchar *file = cdk_abspath (files[i]);
+                  g_hash_table_insert (self->priv->file_set, file, file);
+                  g_ptr_array_add (self->priv->files, g_strdup (file));
                 }
-              g_free (files);
+              chdir (cwd);
+              g_free (cwd);
+              g_strfreev (files);
             }
 
           g_ptr_array_add (self->priv->files, NULL);
@@ -525,9 +535,14 @@ cdk_plugin_save_project (CdkPlugin *self, GKeyFile *config)
     return;
 
   g_key_file_set_string (config, "cdk", "cflags", self->priv->cflags);
+
+  // store paths in config file as relative to project dir
+  gchar **files = cdk_relpaths ((const gchar *const *) self->priv->files->pdata,
+                                geany_data->app->project->base_path);
   g_key_file_set_string_list (config, "cdk", "files",
-                              (const gchar *const *) self->priv->files->pdata,
+                              (const gchar *const *) files,
                               self->priv->files->len - 1);
+  g_strfreev (files);
 
   g_signal_emit_by_name (self, "project-saved");
 }

@@ -174,3 +174,21 @@ cdk_relpath (const gchar *path, const gchar *rel_dir)
 
   return result;
 }
+
+gchar **
+cdk_relpaths (const gchar *const *paths, const gchar *rel_dir)
+{
+  gchar **cpaths = (gchar**) paths;
+  guint count = g_strv_length (cpaths);
+  gchar **rpaths = g_malloc0 ((count + 1) * sizeof (gchar*));
+  for (guint i=0; i < count; i++)
+    {
+      gchar *pth = cdk_relpath (cpaths[i], rel_dir);
+      if (pth != NULL)
+        rpaths[i] = pth;
+      else
+        rpaths[i] = g_strdup (cpaths[i]);
+    }
+  rpaths[count] = NULL;
+  return rpaths;
+}

@@ -10,6 +10,7 @@
 #include <cdk/cdkplugin.h>
 #include <cdk/cdkstyle.h>
 #include <cdk/cdkstylescheme.h>
+#include <cdk/cdkutils.h>
 #include <geanyplugin.h>
 
 static gint update_timeout = 250;
@@ -127,7 +128,9 @@ static void on_project_dialog_open (G_GNUC_UNUSED GObject *object,
   gtk_text_buffer_set_text (gtk_text_view_get_buffer (cflags_textview), cflags, -1);
 
   const gchar *const *files_ = cdk_plugin_get_files (CDK_PLUGIN (cdk_plugin), NULL);
-  gchar *files = g_strjoinv ("\n", (GStrv) files_);
+  gchar **rfiles = cdk_relpaths (files_, geany_data->app->project->base_path);
+  gchar *files = g_strjoinv ("\n", (GStrv) rfiles);
+  g_strfreev (rfiles);
   gtk_text_buffer_set_text (gtk_text_view_get_buffer (files_textview), files, -1);
   g_free(files);
 }
@@ -154,9 +157,12 @@ static void on_project_dialog_confirmed (G_GNUC_UNUSED GObject *object,
 
   gchar *cflags_text = text_view_get_text (cflags_textview);
   gchar *files_text = text_view_get_text (files_textview);
-  gchar **files_list = g_strsplit (files_text, "\n", 0);
+  gchar **files_list_abs = g_strsplit (files_text, "\n", 0);
+  gchar **files_list =
+    cdk_relpaths ((const gchar *const *)files_list_abs,
+                  geany_data->app->project->base_path);
+  g_strfreev (files_list_abs);
   gint files_len = g_strv_length (files_list);
-  g_free (files_text);
 
   GKeyFile *config = g_key_file_new ();
   g_key_file_set_string (config, "cdk", "cflags", cflags_text);
