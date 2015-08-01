@@ -27,6 +27,7 @@ struct CdkHighlighterPrivate_
   CdkStyleScheme *scheme;   // the style scheme being applied
   glong prev_lexer;         // the lexer the document had previously
   gboolean hl_occur;        // whether to highlight occurrences of symbol
+  gulong tooltip_hnd;       // signal connect to query-tooltip on the scintilla
 };
 
 enum
@@ -69,6 +70,112 @@ cdk_highlighter_constructed (GObject *object)
   g_object_bind_property (plugin, "style-scheme", object, "style-scheme", G_BINDING_SYNC_CREATE);
 }
 
+static gboolean
+cdk_highlighter_load_tooltip (CdkDocumentHelper *self,
+                              gint position,
+                              GtkTooltip *tooltip)
+{
+  CdkPlugin *plugin = cdk_document_helper_get_plugin (self);
+  GeanyDocument *doc = cdk_document_helper_get_document (self);
+  CXTranslationUnit tu = cdk_plugin_get_translation_unit (plugin, doc);
+
+  CXFile file = clang_getFile (tu, doc->real_path);
+  CXSourceLocation loc = clang_getLocationForOffset (tu, file, position);
+  CXCursor cursor = clang_getCursor (tu, loc);
+
+  if (clang_Cursor_isNull (cursor))
+    return FALSE;
+
+  GString *tt = g_string_new ("");
+
+  // The cursor's name
+  CXString name = clang_getCursorDisplayName (cursor);
+  const gchar *cname = clang_getCString (name);
+  if (cname == NULL || *cname == '\0')
+    {
+      clang_disposeString (name);
+      name = clang_getCursorSpelling (cursor);
+      cname = clang_getCString (name);
+      if (cname == NULL || *cname == '\0')
+        {
+          clang_disposeString (name);
+          g_string_free (tt, TRUE);
+          return FALSE;
+        }
+    }
+  g_string_append_printf (tt, "<b>Name       :</b> %s",
+                          clang_getCString (name));
+  clang_disposeString (name);
+
+  // Cursor's type name
+  CXType tp = clang_getCursorType (cursor);
+  CXString type = clang_getTypeSpelling (tp);
+  const gchar *ctype = clang_getCString (type);
+  if (ctype == NULL || *ctype == '\0')
+    clang_disposeString (type);
+  else
+    {
+      g_string_append_printf (tt, "\n<b>Type       :</b> %s", clang_getCString (type));
+      clang_disposeString (type);
+    }
+
+  // Location and comment of definition (if any)
+  CXCursor can_cursor = clang_getCanonicalCursor (cursor);
+  CXCursor def_cursor = clang_getCursorDefinition (can_cursor);
+  if (! clang_Cursor_isNull (def_cursor))
+    {
+      // Comment
+      CXString comment = clang_Cursor_getBriefCommentText (def_cursor);
+      const gchar *ccomment = clang_getCString (comment);
+      if (ccomment != NULL && *ccomment != '\0')
+        g_string_append_printf (tt, "\n<b>Description:</b> %s", ccomment);
+      clang_disposeString (comment);
+      // Location
+      CXFile file;
+      guint line=0, column=0;
+      CXSourceLocation def_loc = clang_getCursorLocation (def_cursor);
+      clang_getSpellingLocation (def_loc, &file, &line, &column, NULL);
+      CXString filename = clang_getFileName (file);
+      gchar *rel_fn = cdk_relpath (clang_getCString (filename),
+                                   geany_data->app->project->base_path);
+      clang_disposeString (filename);
+      g_string_append_printf (tt, "\n<b>Defined in :</b> %s:%u:%u",
+                              rel_fn, line, column);
+      g_free (rel_fn);
+    }
+
+  if (tt->len == 0)
+    {
+      g_string_free (tt, TRUE);
+      return FALSE;
+    }
+
+  g_string_prepend (tt, "<tt>");
+  g_string_append (tt, "</tt>");
+  gtk_tooltip_set_markup (tooltip, tt->str);
+  g_string_free (tt, TRUE);
+
+  return TRUE;
+}
+
+static gboolean
+cdk_highlighter_scintilla_query_tooltip (G_GNUC_UNUSED GtkWidget *sci_wid,
+                                         G_GNUC_UNUSED gint x,
+                                         G_GNUC_UNUSED gint y,
+                                         G_GNUC_UNUSED gboolean kbd_mode,
+                                         GtkTooltip *tooltip,
+                                         G_GNUC_UNUSED CdkDocumentHelper *self)
+{
+  ScintillaObject *sci = SCINTILLA (sci_wid);
+  gint pos = cdk_sci_send (sci, SCI_POSITIONFROMPOINT, x, y);
+  gint word_start = cdk_sci_send (sci, SCI_WORDSTARTPOSITION, pos, TRUE);
+  gint word_end = cdk_sci_send (sci, SCI_WORDENDPOSITION, pos, TRUE);
+  gint len = word_end - word_start;
+  if (len > 0)
+    return cdk_highlighter_load_tooltip (self, pos, tooltip);
+  return FALSE;
+}
+
 static void
 cdk_highlighter_initialize_document (CdkDocumentHelper *object,
                                      GeanyDocument     *document)
@@ -86,6 +193,11 @@ cdk_highlighter_initialize_document (CdkDocumentHelper *object,
   cdk_sci_send (sci, SCI_INDICSETALPHA, CDK_HL_OCCUR_INDIC, 32);
   cdk_sci_send (sci, SCI_INDICSETOUTLINEALPHA, CDK_HL_OCCUR_INDIC, 64);
 
+  // enable tooltips on the scintilla
+  gtk_widget_set_has_tooltip (GTK_WIDGET (sci), TRUE);
+
+  self->priv->tooltip_hnd =
+    g_signal_connect (sci, "query-tooltip", G_CALLBACK (cdk_highlighter_scintilla_query_tooltip), self);
   self->priv->editor_notif_hnd =
     g_signal_connect (sci, "sci-notify", G_CALLBACK (cdk_highlighter_editor_notify), self);
 }
@@ -95,8 +207,13 @@ cdk_highlighter_deinitialize_document (CdkHighlighter *self,
                                        GeanyDocument  *document)
 {
   ScintillaObject *sci = document->editor->sci;
+
   if (self->priv->editor_notif_hnd > 0)
-    g_signal_handler_disconnect (document->editor->sci, self->priv->editor_notif_hnd);
+    g_signal_handler_disconnect (sci, self->priv->editor_notif_hnd);
+  self->priv->editor_notif_hnd = 0;
+  if (self->priv->tooltip_hnd > 0)
+    g_signal_handler_disconnect (sci, self->priv->tooltip_hnd);
+  self->priv->tooltip_hnd = 0;
 
   // Reset the styles to some sane default, Geany will re-highlight eventually
   cdk_sci_send (sci, SCI_STYLESETFORE, STYLE_DEFAULT, 0);
@@ -257,11 +374,8 @@ cdk_highlighter_editor_notify (GtkWidget *widget,
   ScintillaObject *sci = SCINTILLA (widget);
 
   if (nt->nmhdr.code == SCN_UPDATEUI)
-    {
-      cdk_highlighter_highlight_occurrences (self);
-      return FALSE;
-    }
-  else if (nt->nmhdr.code != SCN_STYLENEEDED)
+    cdk_highlighter_highlight_occurrences (self);
+  else if (nt->nmhdr.code == SCN_STYLENEEDED)
     {
       guint start_pos = cdk_sci_send (sci, SCI_GETENDSTYLED, 0, 0);
       guint line_num = cdk_sci_send (sci, SCI_LINEFROMPOSITION, start_pos, 0);
@@ -271,8 +385,7 @@ cdk_highlighter_editor_notify (GtkWidget *widget,
 
       return TRUE;
     }
-  else
-    return FALSE;
+  return FALSE;
 }
 
 static void
